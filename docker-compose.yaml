@@ -45,6 +45,7 @@ services:
       - "traefik.http.routers.presidio-analyzer-https.service=presidio-analyzer-service"
       # Service
       - "traefik.http.services.presidio-analyzer-service.loadbalancer.server.port=3000"
+      - "traefik.docker.network=coolify"
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:latest
@@ -89,6 +90,7 @@ services:
       - "traefik.http.routers.presidio-anonymizer-https.service=presidio-anonymizer-service"
       # Service
       - "traefik.http.services.presidio-anonymizer-service.loadbalancer.server.port=3000"
+      - "traefik.docker.network=coolify"
 
   klinikon-presidio-ui:
     build: ./klinikon-presidio-ui
