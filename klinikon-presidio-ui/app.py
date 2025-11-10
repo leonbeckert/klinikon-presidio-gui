@@ -105,21 +105,63 @@ def render_sidebar():
 
         st.divider()
 
-        # Erweiterte Optionen
-        with st.expander("🔧 Erweiterte Optionen"):
-            score_threshold = st.slider(
-                "Min. Konfidenz-Score",
-                min_value=0.0,
-                max_value=1.0,
-                value=0.0,
-                step=0.05,
-                help="Nur Entitäten über diesem Score werden erkannt"
+        # Feineinstellungen (optional, verständlich)
+        with st.expander("⚙️ Feineinstellungen (optional)"):
+            st.markdown("Passen Sie die **Erkennungsempfindlichkeit** an:")
+
+            modus = st.radio(
+                "Erkennungsempfindlichkeit",
+                options=[
+                    "Standard (empfohlen)",
+                    "Nur sehr sichere Treffer",
+                    "Alles finden (inkl. unsicherer Treffer)"
+                ],
+                help=(
+                    "Bestimmt, wie streng die Erkennung arbeitet.\n\n"
+                    "• Standard: gutes Gleichgewicht aus Trefferzahl und Genauigkeit\n"
+                    "• Nur sehr sicher: zeigt nur sehr wahrscheinliche Funde\n"
+                    "• Alles finden: zeigt auch unsichere Funde (mehr Falschalarme möglich)"
+                ),
             )
 
+            # Interne Grenzwerte
+            SCHWELLEN = {
+                "Standard (empfohlen)": 0.35,
+                "Nur sehr sichere Treffer": 0.60,
+                "Alles finden (inkl. unsicherer Treffer)": 0.00,
+            }
+            score_threshold = SCHWELLEN[modus]
+
+            # Laienverständliche Live-Erklärung
+            if modus == "Standard (empfohlen)":
+                st.caption("✓ Zeigt zuverlässige Ergebnisse und blendet offensichtliche Fehlalarme aus.")
+            elif modus == "Nur sehr sichere Treffer":
+                st.caption("⚠️ Sehr vorsichtig: nur Treffer mit hoher Sicherheit. Es kann etwas übersehen werden.")
+            else:
+                st.caption("ℹ️ Sehr sensibel: zeigt möglichst viel – auch Unsicheres. Gut zum Prüfen, evtl. mehr Fehlalarme.")
+
+            # Optional: manueller Feinschliff für Power-User
+            with st.popover("Feinjustierung (optional)"):
+                score_threshold = st.slider(
+                    "Feinjustierung der Empfindlichkeit",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=score_threshold,
+                    step=0.05,
+                    help=(
+                        "Nach links: empfindlicher (mehr finden, inkl. unsicher)\n"
+                        "Nach rechts: strenger (nur sehr sichere Treffer)"
+                    ),
+                )
+                st.caption(f"Aktuelle Schwelle: {score_threshold:.2f}")
+
+            st.divider()
+
+            # Technisches nur für IT/Analyse
             show_json = st.checkbox(
-                "JSON-Ausgabe anzeigen",
+                "Technische Details einblenden (JSON) – nur für IT/Analyse",
                 value=False,
-                help="Zeigt technische Details im JSON-Format"
+                help="Zeigt die Rohdaten der Erkennung im JSON-Format. Für medizinische Nutzung nicht erforderlich."
             )
 
         st.divider()
