@@ -31,7 +31,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
       # Basic Auth middleware (username: presidio-extern)
-      - "traefik.http.middlewares.presidio-auth.basicauth.users=presidio-extern:$$apr1$$5bcKvre1$$wPY6yOYC/EpA5JyCDnlzC."
+      - "traefik.http.middlewares.presidio-auth.basicauth.users=presidio-extern:$$apr1$$ySmKU4uq$$GpschtTYbsP3hWuIvb84O."
       # HTTP router (redirect to HTTPS)
       - "traefik.http.routers.presidio-analyzer-http.entryPoints=http"
       - "traefik.http.routers.presidio-analyzer-http.rule=Host(`analyzer.presidio.klinikon.com`)"
