@@ -1,0 +1,35 @@
+supported_languages: [de]
+default_score_threshold: 0.0
+
+nlp_configuration:
+  nlp_engine_name: spacy
+  models:
+    - lang_code: de
+      model_name: de_core_news_md
+  ner_model_configuration:
+    labels_to_ignore: [O]
+    model_to_presidio_entity_mapping:
+      PER: PERSON
+      LOC: LOCATION
+      ORG: ORGANIZATION
+
+recognizer_registry:
+  supported_languages: [de]
+  global_regex_flags: 26
+  recognizers:
+    - name: SpacyRecognizer
+      type: predefined
+      supported_language: de
+      supported_entities: [PERSON, LOCATION, ORGANIZATION]
+
+    - name: EmailRecognizer
+      type: predefined
+      supported_language: de
+
+    - name: DeKvnrRecognizer
+      supported_language: de
+      supported_entity: DE_KVNR
+      patterns:
+        - name: kvnr_pattern
+          regex: '\b[A-Z]\d{9}\b'
+          score: 0.85

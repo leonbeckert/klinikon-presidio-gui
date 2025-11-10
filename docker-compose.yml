@@ -1,0 +1,83 @@
+services:
+  presidio-analyzer:
+    build: ./analyzer-de
+    container_name: presidio-analyzer-de
+    ports:
+      - "5002:3000"
+    environment:
+      LOG_LEVEL: DEBUG
+      ANALYZER_CONF_FILE: /app/conf/analyzer-conf.yml
+      NLP_CONF_FILE: /app/conf/nlp-config-de.yml
+      RECOGNIZER_REGISTRY_CONF_FILE: /app/conf/recognizers-de.yml
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s  # spaCy-Modell-Laden + Recognizer-Init dauert
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.5'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    networks:
+      - presidio-network
+
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    container_name: presidio-anonymizer
+    ports:
+      - "5001:3000"
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - presidio-network
+
+  klinikon-presidio-ui:
+    build: ./klinikon-presidio-ui
+    container_name: klinikon-presidio-ui
+    environment:
+      ANALYZER_API: http://presidio-analyzer:3000
+      ANONYMIZER_API: http://presidio-anonymizer:3000
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_ENV: ${APP_ENV:-production}
+    depends_on:
+      - presidio-analyzer
+      - presidio-anonymizer
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    networks:
+      - presidio-network
+
+networks:
+  presidio-network:
+    driver: bridge
+
+# Volumes für optional persistent logging (falls gewünscht)
+# volumes:
+#   logs:

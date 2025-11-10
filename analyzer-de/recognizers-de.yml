@@ -1,0 +1,59 @@
+supported_languages: [de]
+global_regex_flags: 26
+recognizers:
+  - name: SpacyRecognizer
+    type: predefined
+    supported_language: de
+    supported_entities: [PERSON, LOCATION, ORGANIZATION]
+
+  - name: DeKvnrRecognizer
+    supported_language: de
+    supported_entity: DE_KVNR
+    patterns:
+      - { name: kvnr_pattern, regex: '\b[A-Z]\d{9}\b', score: 0.85 }
+
+  - name: DePhoneRecognizer
+    supported_language: de
+    supported_entity: DE_PHONE_NUMBER
+    patterns:
+      - { name: de_phone_intl,     regex: '(?:\+49|0049)\s?[1-9]\d{1,4}\s?\d{1,8}', score: 0.75 }
+      - { name: de_phone_national, regex: '0\d{2,5}[\s\-]?\d{5,10}',                score: 0.70 }
+      - { name: de_mobile,         regex: '(01[5-7]\d)\s?\d{7,8}',                  score: 0.75 }
+
+  - name: DeIbanRecognizer
+    supported_language: de
+    supported_entity: DE_IBAN
+    patterns:
+      - { name: de_iban, regex: '\bDE\d{2}\s?(?:\d{4}\s?){4}\d{2}\b', score: 0.90 }
+
+  - name: DePatientIdRecognizer
+    supported_language: de
+    supported_entity: PATIENT_ID
+    patterns:
+      - { name: patient_id_numeric, regex: '\b(?:PAT|PID|P)[\-\s]?\d{6,10}\b', score: 0.80 }
+      - { name: patient_id_simple,  regex: '\bPatientennummer:\s*\d{6,10}\b',   score: 0.85 }
+
+  - name: DeZipCodeRecognizer
+    supported_language: de
+    supported_entity: DE_ZIP_CODE
+    patterns:
+      - { name: de_zip, regex: '\b\d{5}\b', score: 0.50 }
+
+  - name: DeInsuranceRecognizer
+    supported_language: de
+    supported_entity: DE_INSURANCE_NUMBER
+    patterns:
+      - { name: insurance_number, regex: '\b\d{9}\b', score: 0.40 }
+
+  - name: DeDateOfBirthRecognizer
+    supported_language: de
+    supported_entity: DATE_OF_BIRTH
+    patterns:
+      - { name: dob_de_format, regex: '\b(0[1-9]|[12]\d|3[01])\.(0[1-9]|1[0-2])\.(19|20)\d{2}\b', score: 0.85 }
+      - { name: dob_context,   regex: '\b(?:Geburtsdatum|geb\.|geboren am):?\s*(0[1-9]|[12]\d|3[01])\.(0[1-9]|1[0-2])\.(19|20)\d{2}\b', score: 0.90 }
+
+  - name: EmailRecognizer
+    supported_language: de
+    supported_entity: EMAIL_ADDRESS
+    patterns:
+      - { name: email_pattern, regex: '\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', score: 0.90 }

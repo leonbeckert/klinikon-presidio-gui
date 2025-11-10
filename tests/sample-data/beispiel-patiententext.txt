@@ -1,0 +1,62 @@
+Patientenbericht - Innere Medizin
+=====================================
+
+Datum: 15.03.2024
+Klinik: Universitätsklinikum Berlin Charité
+
+PATIENTENDATEN
+--------------
+Name: Max Mustermann
+Geburtsdatum: 12.05.1978
+Adresse: Hauptstraße 42, 10115 Berlin
+Telefon: 030-12345678
+E-Mail: max.mustermann@email.de
+Krankenversichertennummer: M987654321
+Patientennummer: PAT-1234567
+Versicherung: AOK Nordost
+IBAN: DE89370400440532013000
+
+ANAMNESE
+--------
+Der 45-jährige Patient klagt seit 3 Monaten über chronische Rückenschmerzen
+im Bereich der Lendenwirbelsäule (LWS). Schmerzausstrahlung in das rechte Bein.
+Keine bekannten Vorerkrankungen. Nicht-Raucher.
+
+DIAGNOSE
+--------
+- M54.5: Kreuzschmerz (ICD-10)
+- M51.1: Lumbale Bandscheibenerkrankung mit Radikulopathie
+
+THERAPIE
+--------
+1. Physiotherapie (10 Sitzungen)
+2. Ibuprofen 600mg bei Bedarf
+3. Rückenschule
+4. MRT-Kontrolle in 6 Wochen
+
+ÜBERWEISENDER ARZT
+------------------
+Dr. med. Anna Schmidt
+Praxis am Alexanderplatz
+Alexanderplatz 1, 10178 Berlin
+Telefon: 030-98765432
+E-Mail: dr.schmidt@praxis-alexanderplatz.de
+
+BEHANDELNDER ARZT
+-----------------
+Prof. Dr. med. Thomas Müller
+Abteilung für Orthopädie
+Charité - Campus Virchow-Klinikum
+Augustenburger Platz 1, 13353 Berlin
+Telefon: 030-450-552001
+
+VERLAUFSKONTROLLE
+-----------------
+Nächster Termin: 22.04.2024, 10:00 Uhr
+Bei Dr. Schmidt, Tel: 030-98765432
+
+NOTFALLKONTAKT
+--------------
+Ehefrau: Maria Mustermann
+Telefon: 0172-9876543
+Adresse: Hauptstraße 42, 10115 Berlin

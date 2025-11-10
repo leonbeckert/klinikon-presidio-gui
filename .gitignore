@@ -1,0 +1,43 @@
+# Environment & Secrets
+.env
+.env.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
+
+# Test outputs
+tests/output/
+*.test.txt
+
+# Sensitive data (falls versehentlich lokal erzeugt)
+patient-data/
+sensitive/
