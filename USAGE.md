@@ -3,19 +3,19 @@
 ## Authentication
 
 All API endpoints require HTTP Basic Authentication:
-- **Username:** `presidio`
-- **Password:** `SecurePass123`
+- **Username:** `presidio-extern`
+- **Password:** (set during deployment)
 
 ## Making Requests
 
 ### From Command Line (curl)
 
 ```bash
-# Health check
-curl -u presidio:SecurePass123 https://analyzer.presidio.klinikon.com/health
+# Health check (use -k to skip SSL verification if using self-signed certs)
+curl -k -u presidio-extern:your-password https://analyzer.presidio.klinikon.com/health
 
 # Analyze text
-curl -u presidio:SecurePass123 -X POST \
+curl -k -u presidio-extern:your-password -X POST \
   https://analyzer.presidio.klinikon.com/analyze \
   -H "Content-Type: application/json" \
   -d '{
@@ -24,7 +24,7 @@ curl -u presidio:SecurePass123 -X POST \
   }'
 
 # Anonymize text
-curl -u presidio:SecurePass123 -X POST \
+curl -k -u presidio-extern:your-password -X POST \
   https://anonymizer.presidio.klinikon.com/anonymize \
   -H "Content-Type: application/json" \
   -d '{
@@ -45,7 +45,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 # Configure auth
-auth = HTTPBasicAuth('presidio', 'SecurePass123')
+auth = HTTPBasicAuth('presidio-extern', 'your-password')
 
 # Analyze
 response = requests.post(
@@ -81,8 +81,8 @@ print(response.json())
 const axios = require('axios');
 
 const auth = {
-  username: 'presidio',
-  password: 'SecurePass123'
+  username: 'presidio-extern',
+  password: 'your-password'
 };
 
 // Analyze
@@ -124,8 +124,8 @@ services:
     environment:
       - ANALYZER_URL=https://analyzer.presidio.klinikon.com
       - ANONYMIZER_URL=https://anonymizer.presidio.klinikon.com
-      - PRESIDIO_USERNAME=presidio
-      - PRESIDIO_PASSWORD=SecurePass123
+      - PRESIDIO_USERNAME=presidio-extern
+      - PRESIDIO_PASSWORD=your-password
     networks:
       - coolify
 
@@ -140,17 +140,17 @@ Then in your application code, use these environment variables for authenticatio
 
 1. Generate new hash:
    ```bash
-   htpasswd -nb presidio YourNewPassword
+   htpasswd -nb presidio-extern YourNewPassword
    ```
 
 2. Copy the output and replace `$` with `$$`:
    ```
-   presidio:$apr1$xyz$hash  →  presidio:$$apr1$$xyz$$hash
+   presidio-extern:$apr1$xyz$hash  →  presidio-extern:$$apr1$$xyz$$hash
    ```
 
-3. Update `PRESIDIO_BASIC_AUTH` in Coolify environment variables
+3. Update the hash directly in `docker-compose.yaml` in the `traefik.http.middlewares.presidio-auth.basicauth.users` label
 
-4. Redeploy
+4. Commit and redeploy
 
 ## Security Notes
 

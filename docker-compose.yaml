@@ -30,8 +30,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      # Basic Auth middleware
-      - "traefik.http.middlewares.presidio-auth.basicauth.users=${PRESIDIO_BASIC_AUTH}"
+      # Basic Auth middleware (username: presidio-extern)
+      - "traefik.http.middlewares.presidio-auth.basicauth.users=presidio-extern:$$apr1$$5bcKvre1$$wPY6yOYC/EpA5JyCDnlzC."
       # HTTP router (redirect to HTTPS)
       - "traefik.http.routers.presidio-analyzer-http.entryPoints=http"
       - "traefik.http.routers.presidio-analyzer-http.rule=Host(`analyzer.presidio.klinikon.com`)"
@@ -74,8 +74,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      # Basic Auth middleware
-      - "traefik.http.middlewares.presidio-auth.basicauth.users=${PRESIDIO_BASIC_AUTH}"
+      # Basic Auth middleware (username: presidio-extern)
+      - "traefik.http.middlewares.presidio-auth.basicauth.users=presidio-extern:$$apr1$$5bcKvre1$$wPY6yOYC/EpA5JyCDnlzC."
       # HTTP router (redirect to HTTPS)
       - "traefik.http.routers.presidio-anonymizer-http.entryPoints=http"
       - "traefik.http.routers.presidio-anonymizer-http.rule=Host(`anonymizer.presidio.klinikon.com`)"
