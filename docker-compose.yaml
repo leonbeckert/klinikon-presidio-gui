@@ -2,6 +2,8 @@ services:
   presidio-analyzer:
     build: ./analyzer-de
     container_name: presidio-analyzer-de
+    ports:
+      - "3000:3000"
     environment:
       LOG_LEVEL: DEBUG
       ANALYZER_CONF_FILE: /app/conf/analyzer-conf.yml
@@ -27,7 +29,19 @@ services:
       - coolify
     labels:
       - "traefik.enable=true"
-      - "traefik.http.services.https-0-v4wcc8woo4k0c04ogg8kc0w8-presidio-analyzer.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      # HTTP router (redirect to HTTPS)
+      - "traefik.http.routers.presidio-analyzer-http.entryPoints=http"
+      - "traefik.http.routers.presidio-analyzer-http.rule=Host(`analyzer.presidio.klinikon.com`)"
+      - "traefik.http.routers.presidio-analyzer-http.middlewares=redirect-to-https"
+      - "traefik.http.routers.presidio-analyzer-http.service=presidio-analyzer-service"
+      # HTTPS router
+      - "traefik.http.routers.presidio-analyzer-https.entryPoints=https"
+      - "traefik.http.routers.presidio-analyzer-https.rule=Host(`analyzer.presidio.klinikon.com`)"
+      - "traefik.http.routers.presidio-analyzer-https.tls=true"
+      - "traefik.http.routers.presidio-analyzer-https.service=presidio-analyzer-service"
+      # Service
+      - "traefik.http.services.presidio-analyzer-service.loadbalancer.server.port=3000"
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:latest
@@ -54,6 +68,19 @@ services:
       - coolify
     labels:
       - "traefik.enable=true"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      # HTTP router (redirect to HTTPS)
+      - "traefik.http.routers.presidio-anonymizer-http.entryPoints=http"
+      - "traefik.http.routers.presidio-anonymizer-http.rule=Host(`anonymizer.presidio.klinikon.com`)"
+      - "traefik.http.routers.presidio-anonymizer-http.middlewares=redirect-to-https"
+      - "traefik.http.routers.presidio-anonymizer-http.service=presidio-anonymizer-service"
+      # HTTPS router
+      - "traefik.http.routers.presidio-anonymizer-https.entryPoints=https"
+      - "traefik.http.routers.presidio-anonymizer-https.rule=Host(`anonymizer.presidio.klinikon.com`)"
+      - "traefik.http.routers.presidio-anonymizer-https.tls=true"
+      - "traefik.http.routers.presidio-anonymizer-https.service=presidio-anonymizer-service"
+      # Service
+      - "traefik.http.services.presidio-anonymizer-service.loadbalancer.server.port=3000"
 
   klinikon-presidio-ui:
     build: ./klinikon-presidio-ui
