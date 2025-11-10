@@ -4,6 +4,16 @@
 
 Produktionsreifes System zur automatischen Erkennung und Anonymisierung personenbezogener Daten in medizinischen Dokumenten deutscher Kliniken.
 
+## 📖 Schnell-Navigation
+
+- [Features](#-features) - Erkannte Entitäten und Anonymisierungs-Strategien
+- [Architektur](#️-architektur) - System-Übersicht und Port-Mapping
+- [Schnellstart](#-schnellstart) - Installation in 3 Minuten
+- [Verwendung](#-verwendung) - Web-UI und API-Beispiele
+- [Konfiguration](#-konfiguration) - Custom Recognizers hinzufügen
+- [Dokumentation](#-dokumentation) - Alle verfügbaren Docs
+- [Wartung & Betrieb](#️-wartung--betrieb) - Makefile-Commands und Troubleshooting
+
 ---
 
 ## 🎯 Features
@@ -35,17 +45,37 @@ Produktionsreifes System zur automatischen Erkennung und Anonymisierung personen
 ## 🏗️ Architektur
 
 ```
-┌─────────────────┐
-│   Streamlit UI  │  (Port 8501) - Browser-Interface
-└────────┬────────┘
-         │
-         ├──────────► Presidio Analyzer  (Port 5002)
-         │            └─ spaCy DE Model
-         │            └─ Custom Recognizers
-         │
-         └──────────► Presidio Anonymizer (Port 5001)
-                      └─ Anonymization Operators
+                    Docker Network: presidio-network
+┌────────────────────────────────────────────────────────────┐
+│                                                              │
+│  ┌─────────────────┐                                        │
+│  │  Streamlit UI   │  Port 8501:8501                       │
+│  │  (Browser)      │  Limits: 512MB RAM, 0.5 CPU           │
+│  └────────┬────────┘                                        │
+│           │                                                  │
+│           ├──────────► Presidio Analyzer                    │
+│           │            Host: presidio-analyzer:3000 (intern)│
+│           │            Port: 5002→3000 (extern→intern)      │
+│           │            Limits: 2GB RAM, 1.5 CPU             │
+│           │            └─ spaCy DE Model (de_core_news_md)  │
+│           │            └─ Custom German Recognizers         │
+│           │                                                  │
+│           └──────────► Presidio Anonymizer                  │
+│                        Host: presidio-anonymizer:3000       │
+│                        Port: 5001→3000 (extern→intern)      │
+│                        Limits: 512MB RAM, 0.5 CPU           │
+│                        └─ Anonymization Operators           │
+│                                                              │
+└────────────────────────────────────────────────────────────┘
+         ▲                    ▲                    ▲
+         │                    │                    │
+    localhost:8501    localhost:5002      localhost:5001
+     (Web-UI)         (Analyzer-API)    (Anonymizer-API)
 ```
+
+**Port-Mapping**:
+- Extern (von Host): `localhost:5002` und `localhost:5001`
+- Intern (zwischen Containern): `presidio-analyzer:3000` und `presidio-anonymizer:3000`
 
 **Vorteile dieser Architektur:**
 - ✅ **Microservices** - Analyzer und Anonymizer getrennt skalierbar
@@ -73,18 +103,27 @@ cd presidio-medical-de
 # 2. Environment-Datei erstellen
 cp .env.example .env
 
-# 3. Container bauen und starten
-docker compose up -d --build
+# 3. Validierung durchführen (optional, empfohlen)
+./validate.sh
 
-# 4. Logs verfolgen (optional)
+# 4. Container bauen und starten
+docker compose up -d --build
+# ODER mit Makefile:
+make up
+
+# 5. Logs verfolgen (optional)
 docker compose logs -f
+# ODER:
+make logs
 ```
 
 ### Services verfügbar nach ~60 Sekunden:
 
 - **Web-UI**: http://localhost:8501
-- **Analyzer-API**: http://localhost:5002
-- **Anonymizer-API**: http://localhost:5001
+- **Analyzer-API**: http://localhost:5002 (extern) → Port 3000 (intern)
+- **Anonymizer-API**: http://localhost:5001 (extern) → Port 3000 (intern)
+
+> **Hinweis**: Die Services kommunizieren intern über Port 3000, sind aber extern über 5001/5002 erreichbar.
 
 ---
 
@@ -165,6 +204,30 @@ curl -X POST http://localhost:5001/anonymize \
 ---
 
 ## 🔧 Konfiguration
+
+### Environment-Variablen
+
+Die `.env` Datei steuert die grundlegende Konfiguration:
+
+```bash
+# Logging-Level (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL=INFO
+
+# Umgebung (development, production)
+APP_ENV=production
+
+# Optional: Port-Overrides (Standard: siehe docker-compose.yaml)
+# ANALYZER_PORT=5002
+# ANONYMIZER_PORT=5001
+# UI_PORT=8501
+```
+
+**Wichtig**: Nach Änderungen der `.env` Container neu starten:
+```bash
+make restart
+# ODER:
+docker compose restart
+```
 
 ### Analyzer-Konfiguration anpassen
 
@@ -255,7 +318,7 @@ MEDICAL_ANONYMIZERS = {
 ### Empfohlene Production-Settings
 
 ```yaml
-# docker-compose.yml
+# docker-compose.yaml
 services:
   presidio-analyzer:
     environment:
@@ -283,28 +346,52 @@ services:
 ### Manuelle Tests
 
 ```bash
-# Health-Checks
+# Health-Checks (alle Services)
+make health
+# ODER einzeln:
 curl http://localhost:5002/health
 curl http://localhost:5001/health
 
-# Analyzer mit Beispiel-Text
+# Analyzer mit Beispiel-Text testen
 curl -X POST http://localhost:5002/analyze \
   -H "Content-Type: application/json" \
-  --data @tests/sample-data/beispiel-text.txt
+  -d '{
+    "text": "Patient Max Mustermann, geb. 15.03.1978, KVNR M123456789",
+    "language": "de",
+    "score_threshold": 0.0
+  }' | jq .
 ```
 
 ### Test-Daten
 
-Im Verzeichnis `tests/sample-data/` finden sich Beispiel-Texte.
+Im Verzeichnis `tests/sample-data/` findet sich `beispiel-text.txt` mit einem vollständigen medizinischen Beispieltext, der alle Entitätstypen enthält. Dieser kann im Web-UI über "Beispieltext laden" geladen werden.
 
 ---
 
 ## 🛠️ Wartung & Betrieb
 
+### Makefile-Commands
+
+Das Projekt enthält ein Makefile mit nützlichen Shortcuts:
+
+```bash
+make up          # Container starten (mit --build)
+make down        # Container stoppen und entfernen
+make restart     # Container neustarten
+make logs        # Logs aller Services anzeigen
+make health      # Health-Checks durchführen
+make test        # Test-Suite ausführen
+make clean       # Container, Volumes, Images entfernen
+make validate    # Validierung durchführen
+```
+
 ### Logs einsehen
 
 ```bash
-# Alle Services
+# Alle Services (mit Makefile)
+make logs
+
+# Traditionell mit Docker Compose:
 docker compose logs -f
 
 # Nur Analyzer
@@ -317,7 +404,10 @@ docker compose logs --tail=100
 ### Container neustarten
 
 ```bash
-# Alle Services
+# Alle Services (mit Makefile)
+make restart
+
+# Traditionell:
 docker compose restart
 
 # Nur ein Service
@@ -332,6 +422,8 @@ docker compose pull
 
 # Neu bauen und starten
 docker compose up -d --build
+# ODER:
+make up
 ```
 
 ### Ressourcen-Monitoring
@@ -366,7 +458,7 @@ docker compose restart
 
 **Problem: Zu hoher RAM-Verbrauch**
 ```yaml
-# docker-compose.yml anpassen
+# docker-compose.yaml anpassen
 deploy:
   resources:
     limits:
@@ -408,7 +500,20 @@ deploy:
 
 ---
 
-## 📚 Weiterführende Dokumentation
+## 📚 Dokumentation
+
+### Projekt-Dokumentation
+
+Dieses Projekt enthält umfassende Dokumentation:
+
+- **README.md** (diese Datei) - Übersicht, Installation, Verwendung
+- **ARCHITECTURE.md** - Detaillierte technische Architektur, Komponenten-Design
+- **API_IMPLEMENTATION_GUIDE.md** - Ausführliche API-Integration und Beispiele
+- **CHANGELOG.md** - Versions-Historie und geplante Features
+- **Makefile** - Convenience-Commands (make up, make down, make logs, make health, etc.)
+- **validate.sh** - Pre-flight Validierung vor dem ersten Start
+
+### Externe Ressourcen
 
 - [Microsoft Presidio Docs](https://microsoft.github.io/presidio/)
 - [spaCy Deutsch](https://spacy.io/models/de)
@@ -451,9 +556,36 @@ Eigener Code: Kann gemäß Projekt-Lizenz verwendet werden.
 ## 🔖 Version
 
 **Version:** 1.0.0
-**Datum:** März 2024
+**Datum:** November 2025
 **Status:** Production-Ready
+
+### Projekt-Struktur
+
+```
+PresidioGUI/
+├── README.md                          # Diese Datei
+├── ARCHITECTURE.md                    # Technische Dokumentation
+├── API_IMPLEMENTATION_GUIDE.md        # API-Integration
+├── CHANGELOG.md                       # Versions-Historie
+├── docker-compose.yaml                # Service-Orchestrierung
+├── .env.example                       # Environment-Vorlage
+├── Makefile                           # Convenience-Commands
+├── validate.sh                        # Pre-flight Checks
+├── analyzer-de/                       # Presidio Analyzer Service
+│   ├── Dockerfile
+│   ├── analyzer-config-medical-de.yml # Haupt-Konfiguration
+│   ├── recognizers-de.yml             # Custom Recognizers
+│   └── nlp-config-de.yml              # spaCy-Konfiguration
+├── klinikon-presidio-ui/              # Streamlit Web-Interface
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   ├── app.py                         # Hauptanwendung
+│   └── helpers.py                     # API-Client & Business Logic
+└── tests/
+    └── sample-data/
+        └── beispiel-text.txt          # Beispiel-Medizintext
+```
 
 ---
 
-**Entwickelt für deutsche Kliniken zur DSGVO-konformen text-Pseudonymisierung.**
+**Entwickelt für deutsche Kliniken zur DSGVO-konformen Text-Pseudonymisierung.**
