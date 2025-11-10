@@ -73,10 +73,28 @@ services:
           cpus: '0.5'
     networks:
       - presidio-network
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      # HTTP router (redirect to HTTPS)
+      - "traefik.http.routers.presidio-ui-http.entryPoints=http"
+      - "traefik.http.routers.presidio-ui-http.rule=Host(`presidio.klinikon.com`)"
+      - "traefik.http.routers.presidio-ui-http.middlewares=redirect-to-https"
+      - "traefik.http.routers.presidio-ui-http.service=presidio-ui-service"
+      # HTTPS router
+      - "traefik.http.routers.presidio-ui-https.entryPoints=https"
+      - "traefik.http.routers.presidio-ui-https.rule=Host(`presidio.klinikon.com`)"
+      - "traefik.http.routers.presidio-ui-https.tls=true"
+      - "traefik.http.routers.presidio-ui-https.service=presidio-ui-service"
+      # Service
+      - "traefik.http.services.presidio-ui-service.loadbalancer.server.port=8501"
 
 networks:
   presidio-network:
     driver: bridge
+  coolify:
+    external: true
 
 # Volumes für optional persistent logging (falls gewünscht)
 # volumes:
