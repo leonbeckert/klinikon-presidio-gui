@@ -45,7 +45,7 @@ services:
       #- "traefik.http.routers.presidio-analyzer-https.middlewares=presidio-auth"
       - "traefik.http.routers.presidio-analyzer-https.service=presidio-analyzer-service"
       # Service
-      - "traefik.http.services.presidio-analyzer-service.loadbalancer.server.port=5002"
+      - "traefik.http.services.presidio-analyzer-service.loadbalancer.server.port=3000"
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:latest
@@ -90,7 +90,8 @@ services:
       #- "traefik.http.routers.presidio-anonymizer-https.middlewares=presidio-auth"
       - "traefik.http.routers.presidio-anonymizer-https.service=presidio-anonymizer-service"
       # Service
-      - "traefik.http.services.presidio-anonymizer-service.loadbalancer.server.port=5001"
+      - "traefik.http.services.presidio-anonymizer-service.loadbalancer.server.port=3000"
+
 
   klinikon-presidio-ui:
     build: ./klinikon-presidio-ui
