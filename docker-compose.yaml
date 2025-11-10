@@ -27,6 +27,7 @@ services:
       - coolify
     labels:
       - "traefik.enable=true"
+      - "traefik.http.services.analyzer.loadbalancer.server.port=3000"
 
   presidio-anonymizer:
     image: mcr.microsoft.com/presidio-anonymizer:latest
