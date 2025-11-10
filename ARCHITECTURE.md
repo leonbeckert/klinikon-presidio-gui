@@ -91,7 +91,7 @@ presidio-medical-de/
 │
 ├── tests/
 │   └── sample-data/
-│       └── beispiel-patiententext.txt  # Test-Daten
+│       └── beispiel-text.txt  # Test-Daten
 │
 ├── validate.sh                 # Pre-Flight Check-Script
 ├── README.md                   # Hauptdokumentation

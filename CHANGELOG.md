@@ -42,7 +42,7 @@ und dieses Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 - Production Deployment Guide
 - API-Dokumentation & Beispiele
 - Makefile für einfache Verwaltung
-- Beispiel-Patiententexte für Tests
+- Beispiel-Texte für Tests
 
 #### Development
 - `.env.example` für Konfiguration

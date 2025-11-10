@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 # Page-Konfiguration
 st.set_page_config(
-    page_title="Klinikon Pseudonymisierer - Patiententext-Pseudonymisierung",
-    page_icon="🏥",
+    page_title="Klinikon Pseudonymisierer - Text-Pseudonymisierung mit Presidio",
+    page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -226,9 +226,9 @@ def main():
     init_session_state()
 
     # Header
-    st.markdown('<h1 class="main-header">🏥 Klinikon Presidio Pseudonymisierer</h1>', unsafe_allow_html=True)
+    st.markdown('<h1 class="main-header">🛡 Klinikon Presidio Pseudonymisierer</h1>', unsafe_allow_html=True)
     st.markdown(
-        "**Pseudonymisierung von Patiententexten** nach DSGVO-Anforderungen. "
+        "**Pseudonymisierung von Texteingaben** nach DSGVO-Anforderungen. "
         "Erkennt und anonymisiert personenbezogene Daten in deutschen medizinischen Dokumenten."
     )
 
@@ -238,7 +238,7 @@ def main():
     st.divider()
 
     # Hauptbereich: Eingabe
-    st.subheader("📝 Eingabe: Patiententext")
+    st.subheader("📝 Texteingabe")
 
     # Beispieltext-Button
     if st.button("📋 Beispieltext laden"):
@@ -263,7 +263,7 @@ def main():
         value=st.session_state.input_text,
         height=300,
         placeholder="Geben Sie hier den zu pseudonymisierenden Text ein...",
-        help="Patiententext mit personenbezogenen Daten"
+        help="Text mit personenbezogenen Daten"
     )
     st.session_state.input_text = input_text
 
@@ -344,14 +344,16 @@ def main():
         anonymized = st.session_state.anonymized_text.get("text", "")
 
         # Ausgabe-Box
-        st.markdown('<div class="success-box">', unsafe_allow_html=True)
         st.text_area(
             label="Pseudonymisiertes Ergebnis",
             value=anonymized,
             height=300,
             help="Kopieren Sie diesen Text für die weitere Verarbeitung"
         )
-        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Code-Ansicht mit Copy-Funktion
+        st.info("💡 **Tipp:** Nutzen Sie das Kopier-Symbol oben rechts im folgenden Feld, um den Text mit einem Klick zu kopieren. Bewegen Sie die Maus auf des Feld, damit das Symbol erscheint.")
+        st.code(anonymized, language=None)
 
         # Download-Button
         st.download_button(
@@ -368,7 +370,7 @@ def main():
     # Footer
     st.divider()
     st.markdown(
-        "<small>🏥 **Klinikon Pseudonymisierer** | "
+        "<small>**Klinikon Pseudonymisierer** | "
         "Powered by Microsoft Presidio | "
         "Keine Daten werden gespeichert</small>",
         unsafe_allow_html=True

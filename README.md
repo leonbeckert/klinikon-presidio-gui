@@ -1,6 +1,6 @@
 # Klinikon Pseudonymisierer 🏥
 
-**DSGVO-konforme Pseudonymisierung von deutschen Patiententexten**
+**DSGVO-konforme Pseudonymisierung von deutschen Texten**
 
 Produktionsreifes System zur automatischen Erkennung und Anonymisierung personenbezogener Daten in medizinischen Dokumenten deutscher Kliniken.
 
@@ -290,12 +290,12 @@ curl http://localhost:5001/health
 # Analyzer mit Beispiel-Text
 curl -X POST http://localhost:5002/analyze \
   -H "Content-Type: application/json" \
-  --data @tests/sample-data/beispiel-patiententext.txt
+  --data @tests/sample-data/beispiel-text.txt
 ```
 
 ### Test-Daten
 
-Im Verzeichnis `tests/sample-data/` finden sich Beispiel-Patiententexte.
+Im Verzeichnis `tests/sample-data/` finden sich Beispiel-Texte.
 
 ---
 
@@ -456,4 +456,4 @@ Eigener Code: Kann gemäß Projekt-Lizenz verwendet werden.
 
 ---
 
-**Entwickelt für deutsche Kliniken zur DSGVO-konformen Patiententext-Pseudonymisierung.**
+**Entwickelt für deutsche Kliniken zur DSGVO-konformen text-Pseudonymisierung.**

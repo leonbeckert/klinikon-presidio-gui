@@ -7,7 +7,7 @@ nlp_configuration:
     - lang_code: de
       model_name: de_core_news_md
   ner_model_configuration:
-    labels_to_ignore: [O]
+    labels_to_ignore: [O, MISC]
     model_to_presidio_entity_mapping:
       PER: PERSON
       LOC: LOCATION
