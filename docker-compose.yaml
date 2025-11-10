@@ -42,7 +42,7 @@ services:
       - "traefik.http.routers.presidio-analyzer-https.entryPoints=https"
       - "traefik.http.routers.presidio-analyzer-https.rule=Host(`analyzer.presidio.klinikon.com`)"
       - "traefik.http.routers.presidio-analyzer-https.tls=true"
-      - "traefik.http.routers.presidio-analyzer-https.middlewares=presidio-auth"
+      #- "traefik.http.routers.presidio-analyzer-https.middlewares=presidio-auth"
       - "traefik.http.routers.presidio-analyzer-https.service=presidio-analyzer-service"
       # Service
       - "traefik.http.services.presidio-analyzer-service.loadbalancer.server.port=3000"
@@ -88,7 +88,7 @@ services:
       - "traefik.http.routers.presidio-anonymizer-https.entryPoints=https"
       - "traefik.http.routers.presidio-anonymizer-https.rule=Host(`anonymizer.presidio.klinikon.com`)"
       - "traefik.http.routers.presidio-anonymizer-https.tls=true"
-      - "traefik.http.routers.presidio-anonymizer-https.middlewares=presidio-auth"
+      #- "traefik.http.routers.presidio-anonymizer-https.middlewares=presidio-auth"
       - "traefik.http.routers.presidio-anonymizer-https.service=presidio-anonymizer-service"
       # Service
       - "traefik.http.services.presidio-anonymizer-service.loadbalancer.server.port=3000"
