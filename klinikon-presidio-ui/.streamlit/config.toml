@@ -1,0 +1,8 @@
+[theme]
+# Set light mode as default theme with custom colors
+base = "light"
+primaryColor = "#488288"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#e8f1f2"
+textColor = "#1a1a1a"
+font = "sans serif"

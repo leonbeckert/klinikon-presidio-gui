@@ -26,26 +26,35 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS für bessere Lesbarkeit
+# Custom CSS mit angepassten Farben
 st.markdown("""
 <style>
     .main-header {
         font-size: 2rem;
-        color: #1f77b4;
+        color: #488288;
         margin-bottom: 1rem;
     }
     .entity-box {
         padding: 0.5rem;
         border-radius: 5px;
         margin: 0.5rem 0;
-        background-color: #f0f2f6;
+        background-color: #e8f1f2;
+        border-left: 3px solid #488288;
     }
     .success-box {
         padding: 1rem;
         border-radius: 5px;
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
+        background-color: #d4f1f4;
+        border: 1px solid #488288;
         margin: 1rem 0;
+    }
+    .stButton>button {
+        background-color: #488288;
+        color: white;
+    }
+    .stButton>button:hover {
+        background-color: #577498;
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)

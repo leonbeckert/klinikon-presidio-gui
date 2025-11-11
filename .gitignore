@@ -33,6 +33,7 @@ Thumbs.db
 *.pid
 *.seed
 *.pid.lock
+docker-compose.override.yaml
 
 # Test outputs
 tests/output/

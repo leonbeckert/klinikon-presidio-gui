@@ -14,6 +14,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Kopiere Anwendungs-Code
 COPY helpers.py app.py ./
 
+# Kopiere Streamlit-Konfiguration
+COPY .streamlit /app/.streamlit
+
 # Erstelle Verzeichnis für Logs (optional)
 RUN mkdir -p /app/logs
 
