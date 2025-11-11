@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Page-Konfiguration
 st.set_page_config(
     page_title="Klinikon Pseudonymisierer - Text-Pseudonymisierung mit Presidio",
-    page_icon="🛡️",
+    page_icon="favicon.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -235,7 +235,11 @@ def main():
     init_session_state()
 
     # Header
-    st.markdown('<h1 class="main-header">🛡 Klinikon Presidio Pseudonymisierer</h1>', unsafe_allow_html=True)
+    col1, col2 = st.columns([0.08, 0.92])
+    with col1:
+        st.image("favicon.png", width=50)
+    with col2:
+        st.markdown('<h1 class="main-header" style="margin-top: 0;">Klinikon Presidio Pseudonymisierer</h1>', unsafe_allow_html=True)
     st.markdown(
         "**Pseudonymisierung von Texteingaben** nach DSGVO-Anforderungen. "
         "Erkennt und anonymisiert personenbezogene Daten in deutschen medizinischen Dokumenten."

@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Kopiere Anwendungs-Code
-COPY helpers.py app.py ./
+COPY helpers.py app.py favicon.png ./
 
 # Kopiere Streamlit-Konfiguration
 COPY .streamlit /app/.streamlit
