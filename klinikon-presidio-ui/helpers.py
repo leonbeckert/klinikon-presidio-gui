@@ -184,6 +184,7 @@ MEDICAL_ANONYMIZERS = {
         "PERSON": {"type": "replace", "new_value": "<PATIENT>"},
         "LOCATION": {"type": "replace", "new_value": "<ORT>"},
         "ORGANIZATION": {"type": "replace", "new_value": "<EINRICHTUNG>"},
+        "ADDRESS": {"type": "replace", "new_value": "<ADRESSE>"},
         "DE_KVNR": {"type": "replace", "new_value": "<KVNR>"},
         "PATIENT_ID": {"type": "replace", "new_value": "<PID>"},
         "DE_PHONE_NUMBER": {"type": "replace", "new_value": "<TELEFON>"},
@@ -194,6 +195,7 @@ MEDICAL_ANONYMIZERS = {
     "Teilweise (Maskierung)": {
         "DEFAULT": {"type": "mask", "masking_char": "X", "chars_to_mask": 8, "from_end": False},
         "PERSON": {"type": "mask", "masking_char": "*", "chars_to_mask": 6, "from_end": False},
+        "ADDRESS": {"type": "mask", "masking_char": "*", "chars_to_mask": 10, "from_end": False},
         "DE_KVNR": {"type": "mask", "masking_char": "X", "chars_to_mask": 7, "from_end": True},
         "PATIENT_ID": {"type": "mask", "masking_char": "X", "chars_to_mask": 5, "from_end": True},
         "DE_PHONE_NUMBER": {"type": "mask", "masking_char": "•", "chars_to_mask": 6, "from_end": True},
@@ -203,6 +205,7 @@ MEDICAL_ANONYMIZERS = {
     "Konsistent (Hash)": {
         "DEFAULT": {"type": "hash", "hash_type": "sha256"},
         "PERSON": {"type": "hash", "hash_type": "md5"},
+        "ADDRESS": {"type": "hash", "hash_type": "sha256"},
         "DE_KVNR": {"type": "hash", "hash_type": "sha256"},
         "PATIENT_ID": {"type": "hash", "hash_type": "sha256"},
     }

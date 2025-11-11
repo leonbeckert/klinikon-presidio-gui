@@ -182,6 +182,7 @@ def render_sidebar():
         - `PERSON` - Namen
         - `LOCATION` - Orte, Städte
         - `ORGANIZATION` - Einrichtungen
+        - `ADDRESS` - Adressen (Straße + Hausnummer)
 
         **Medizinische Daten:**
         - `DE_KVNR` - Krankenversichertennummer

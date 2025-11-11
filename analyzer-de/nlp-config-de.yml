@@ -1,7 +1,7 @@
 nlp_engine_name: spacy
 models:
   - lang_code: de
-    model_name: de_core_news_md
+    model_name: /app/models/de_with_address
 ner_model_configuration:
   labels_to_ignore: [O, MISC]
   model_to_presidio_entity_mapping:
@@ -9,3 +9,4 @@ ner_model_configuration:
     PERSON: PERSON
     LOC: LOCATION
     ORG: ORGANIZATION
+    ADDRESS: ADDRESS

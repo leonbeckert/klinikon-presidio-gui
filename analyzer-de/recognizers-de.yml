@@ -4,7 +4,7 @@ recognizers:
   - name: SpacyRecognizer
     type: predefined
     supported_language: de
-    supported_entities: [PERSON, LOCATION, ORGANIZATION]
+    supported_entities: [PERSON, LOCATION, ORGANIZATION, ADDRESS]
 
   - name: DeKvnrRecognizer
     supported_language: de
