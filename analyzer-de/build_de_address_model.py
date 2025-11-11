@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """
-Build a custom spaCy model with ADDRESS EntityRuler for German addresses.
-This script loads the base de_core_news_md model and adds custom patterns
-to recognize German street addresses.
+Build a custom spaCy model with ADDRESS EntityRuler + OpenPLZ street gazetteer.
+This script loads the base de_core_news_md model and adds:
+1. EntityRuler patterns for common German address formats
+2. Street gazetteer component using OpenPLZ street names for validation
 """
 import spacy
 from pathlib import Path
 
+# Importing street_gazetteer ensures the component is registered
+import street_gazetteer  # noqa: F401
+
 BASE_MODEL = "de_core_news_md"
 OUTPUT_DIR = "/app/models/de_with_address"
 
-print(f"Loading base model: {BASE_MODEL}")
+print("[build] Loading base model:", BASE_MODEL)
 nlp = spacy.load(BASE_MODEL)
 
 # Insert EntityRuler before NER so we keep spaCy NER + our rules
@@ -81,7 +85,17 @@ patterns = [
 
 ruler.add_patterns(patterns)
 
+
+# Add street gazetteer component at the end
+if "street_gazetteer" not in nlp.pipe_names:
+    print("[build] Adding street_gazetteer component...")
+    nlp.add_pipe("street_gazetteer", last=True)
+else:
+    print("[build] street_gazetteer already present in pipeline.")
+
+
+# Save the complete model with EntityRuler + Street Gazetteer
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 nlp.to_disk(OUTPUT_DIR)
-print(f"✓ Saved custom model with ADDRESS EntityRuler to {OUTPUT_DIR}")
-print(f"✓ Pipeline components: {nlp.pipe_names}")
+print(f"[build] Saved custom model to {OUTPUT_DIR}")
+print(f"[build] Pipeline components: {nlp.pipe_names}")
