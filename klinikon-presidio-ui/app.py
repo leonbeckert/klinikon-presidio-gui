@@ -23,7 +23,7 @@ st.set_page_config(
     page_title="Klinikon Pseudonymisierer - Text-Pseudonymisierung mit Presidio",
     page_icon="favicon.png",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Custom CSS mit angepassten Farben
