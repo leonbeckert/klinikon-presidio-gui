@@ -56,6 +56,10 @@ st.markdown("""
         background-color: #577498;
         color: white;
     }
+    .stButton>button:active {
+        background-color: #3a6b70;
+        color: white;
+    }
 </style>
 """, unsafe_allow_html=True)
 
