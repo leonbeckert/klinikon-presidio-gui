@@ -49,9 +49,11 @@ else:
 
 # Expanded suffix list from failure analysis
 # Common: straße, str, weg, allee, platz, gasse, ring, ufer, damm, hof, chaussee, pfad
-# Added: garten, plan, redder, wiesen, flur, feld, berg, see, tal, blick, park, kamp, kamps
+# Phase 2: garten, plan, redder, wiesen, flur, feld, berg, see, tal, blick, park, kamp, kamps
+# Phase 3: gang, twiete, twieten, terrasse, terrassen, siedlung, winkel, äcker, acker, wald,
+#          brink, rain, grund, höhe, hang, anger, bruch, heide, holz
 # IMPORTANT: Allow optional period at end to match merged tokens like "Hauffstr." (not just "Hauffstr")
-STREET_SUFFIX_REGEX = r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt|garten|plan|redder|wiesen|flur|feld|berg|see|tal|blick|park|kamp|kamps)\.?$"
+STREET_SUFFIX_REGEX = r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt|garten|plan|redder|wiesen|flur|feld|berg|see|tal|blick|park|kamp|kamps|gang|twiete|twieten|terrasse|terrassen|siedlung|winkel|äcker|acker|wald|brink|rain|grund|höhe|hang|anger|bruch|heide|holz)\.?$"
 
 # Token-level patterns for typical German street addresses
 # Note: German compound street names are single tokens (e.g., "Hauptstraße")
@@ -149,19 +151,54 @@ patterns = [
             },
         ],
     },
-    # 5) Phase 2: Multi-hyphen streets with suffix token
-    # Examples: "Bertha-von-Suttner-Str. 198c", "St.-Brevin-Ring 82"
+    # 5) Phase 2/3: Multi-hyphen streets with suffix token
+    # Examples: "Bertha-von-Suttner-Str. 198c", "Hans-im-Glück-Weg 153", "Franz-von-Kobell-Str. 19"
     # Conservative pattern: requires suffix token to avoid over-matching person names
+    # Phase 3: Expanded particles to include "im", "am", "zum", "zur" for cases like "Hans-im-Glück"
     {
         "label": "ADDRESS",
         "pattern": [
-            {"IS_TITLE": True},                          # e.g., Bertha, St.
+            {"IS_TITLE": True},                          # e.g., Bertha, Hans, Franz
             {"ORTH": "-", "OP": "+"},                    # one or more hyphens
-            {"LOWER": {"IN": ["von", "vom", "der", "den", "dem", "und"]}, "OP": "?"},  # optional particle
-            {"IS_TITLE": True, "OP": "+"},              # Suttner, Brevin
+            {"LOWER": {"IN": ["von", "vom", "der", "den", "dem", "und", "im", "am", "zum", "zur"]}, "OP": "?"},  # optional particle
+            {"IS_TITLE": True, "OP": "+"},              # Suttner, Glück, Kobell
             {"ORTH": "-", "OP": "?"},                   # hyphen before suffix
             {"LOWER": {"REGEX": r"^(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse)$"}},
             {"IS_PUNCT": True, "OP": "?"},              # dot after Str
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 2b) Phase 3: Prepositional street names WITHOUT canonical suffix
+    # Examples: "Im Grünen Winkel 164", "Im Kessler 26", "Zum Bildstöckle 126"
+    # Safety: mandatory house number + Title casing
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"LOWER": {"IN": ["im", "am", "an", "auf", "unter", "vor", "hinter", "bei", "zum", "zur"]}},
+            {"IS_TITLE": True, "OP": "+"},         # one or more Title tokens (e.g., Grünen Winkel / Kessler)
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 1c) Phase 3: Composite phrase pattern (Adjective + suffix + short PP + Number)
+    # Example: "südlicher Serviceweg am Mittellandkanal 36"
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"IS_LOWER": True, "OP": "?"},                          # optional adjective like "südlicher"
+            {"IS_TITLE": True, "OP": "+"},                          # e.g., Serviceweg
+            {"LOWER": {"REGEX": STREET_SUFFIX_REGEX}},              # ensure it's a real suffixy head
+            {"IS_PUNCT": True, "OP": "?"},                          # optional hyphen/dot
+            {"LOWER": {"IN": ["am", "an", "im", "in", "bei"]}, "OP": "?"},  # short PP introducing landmark
+            {"IS_TITLE": True, "OP": "*"},                          # Mittellandkanal (allow multi-token)
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 6) Phase 3: Conservative oddball token + Number (e.g., "X-2s 199")
+    # Last resort: requires capital letter AND digit/hyphen, followed by house number
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"TEXT": {"REGEX": r"^(?=.*[A-ZÄÖÜ])(?=.*[-0-9])[A-Za-zÄÖÜäöü0-9-]+$"}},
             {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
         ],
     },

@@ -345,19 +345,24 @@ def _is_street_token_like(tok):
     import re
 
     # NEW: Treat common suffix tokens as street-like (critical for "X Str." cases)
+    # Phase 3: Expanded with regional variants (gang, twiete, terrasse, siedlung, winkel, etc.)
     suffix_tokens = {
         "straße", "str.", "str", "weg", "allee", "platz", "gasse", "ring",
         "ufer", "damm", "hof", "chaussee", "pfad", "strasse", "markt",
         "steig", "stieg", "garten", "plan", "redder", "wiesen", "flur",
-        "feld", "berg", "see", "tal", "blick", "park", "kamp", "kamps"
+        "feld", "berg", "see", "tal", "blick", "park", "kamp", "kamps",
+        "gang", "twiete", "twieten", "terrasse", "terrassen", "siedlung",
+        "winkel", "äcker", "acker", "wald", "brink", "rain", "grund",
+        "höhe", "hang", "anger", "bruch", "heide", "holz"
     }
     if tok.lower_ in suffix_tokens:
         return True
 
     # NEW: Also recognize compound street tokens that END with a suffix
-    # (e.g., "Hauffstr.", "Birkenstr.", "Meisenweg")
+    # (e.g., "Hauffstr.", "Birkenstr.", "Meisenweg", "Papiermühle", "Laubengang")
     # This catches single-token compound streets without hyphens
-    if tok.is_title and re.search(r"(straße|str\.|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|markt|steig|stieg|garten)\.?$", tok.lower_):
+    # Phase 3: Expanded regex to include regional suffix variants
+    if tok.is_title and re.search(r"(straße|str\.|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|markt|steig|stieg|garten|gang|twiete|twieten|terrasse|terrassen|siedlung|winkel|äcker|acker|wald|brink|rain|grund|höhe|hang|anger|bruch|heide|holz)\.?$", tok.lower_):
         return True
 
     # Phase 2a: Accept short uppercase abbreviations like "St."
@@ -367,7 +372,8 @@ def _is_street_token_like(tok):
     # Phase 2b: Accept merged multi-hyphen streets (e.g., "Bertha-von-Suttner-Str.")
     # These are created by merge_str_abbrev and contain hyphens + street suffix
     # Match pattern: contains hyphen(s) and ends with common street suffix
-    if "-" in tok.text and re.search(r"(straße|str\.|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse)\.?$", tok.lower_):
+    # Phase 3: Expanded suffix list
+    if "-" in tok.text and re.search(r"(straße|str\.|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|gang|twiete|terrasse|siedlung|winkel|wald|brink|grund|höhe|anger|bruch|heide|holz)\.?$", tok.lower_):
         return True
 
     # Phase 2c: Accept mixed alphanumeric segments within hyphen chains (e.g., "X-2s")
