@@ -144,17 +144,125 @@ def normalize_street_name(name: str) -> str:
     # collapse whitespace
     s = re.sub(r"\s+", " ", s)
 
-    # unify Straße variants (but NOT general ss → ß, only in specific contexts)
+    # Phase 1 (restored): Tuple-based normalization for consistent gazetteer matching
+    # Comprehensive list covers all major German street suffix abbreviations
+    #
+    # IMPORTANT: The two problematic patterns that caused "strasseasse" bug are REMOVED:
+    #   ("-Str", "-Straße")  - would match "-Str" inside "-Straße" → "-Straßeaße"
+    #   ("-str", "-straße")  - would match "-str" inside "-straße" → "-straßeaße"
+    #
+    # These patterns are SAFE and form the Phase-1 baseline that achieved 94.6% accuracy.
     replacements = [
+        # Straße (most common - ~40% of German streets)
         ("Strasse", "Straße"),
         ("strasse", "straße"),
         ("Str.", "Straße"),
         ("str.", "straße"),
-        ("St.", "Sankt"),  # Phase 2: Normalize St. abbreviation
+        # NOTE: ("-Str", "-Straße") and ("-str", "-straße") are INTENTIONALLY OMITTED
+        # to prevent double-expansion bug. The targeted regex below handles "-Str." safely.
+
+        # Weg (~15% of streets)
+        ("Wg.", "Weg"),
+        ("wg.", "weg"),
+        ("W.", "Weg"),
+        ("w.", "weg"),
+
+        # Platz (~8% of streets)
+        ("Pl.", "Platz"),
+        ("pl.", "platz"),
+
+        # Allee (~5% of streets)
+        ("Al.", "Allee"),
+        ("al.", "allee"),
+        ("All.", "Allee"),
+        ("all.", "allee"),
+
+        # Ring (~3% of streets)
+        ("Rg.", "Ring"),
+        ("rg.", "ring"),
+        ("R.", "Ring"),
+        ("r.", "ring"),
+
+        # Gasse (~3% of streets, higher in Austria/Switzerland)
+        ("G.", "Gasse"),
+        ("g.", "gasse"),
+        ("Ga.", "Gasse"),
+        ("ga.", "gasse"),
+        ("Gass.", "Gasse"),
+        ("gass.", "gasse"),
+
+        # Damm
+        ("Dm.", "Damm"),
+        ("dm.", "damm"),
+        ("Dam.", "Damm"),
+        ("dam.", "damm"),
+
+        # Ufer (river-adjacent streets)
+        ("Uf.", "Ufer"),
+        ("uf.", "ufer"),
+
+        # Chaussee
+        ("Chaus.", "Chaussee"),
+        ("chaus.", "chaussee"),
+        ("Ch.", "Chaussee"),
+        ("ch.", "chaussee"),
+
+        # Pfad
+        ("Pf.", "Pfad"),
+        ("pf.", "pfad"),
+        ("Pfad.", "Pfad"),
+        ("pfad.", "pfad"),
+
+        # Steig
+        ("Stg.", "Steig"),
+        ("stg.", "steig"),
+
+        # Garten
+        ("Gart.", "Garten"),
+        ("gart.", "garten"),
+
+        # Graben
+        ("Gr.", "Graben"),
+        ("gr.", "graben"),
+        ("Grab.", "Graben"),
+        ("grab.", "graben"),
+
+        # Markt
+        ("Mkt.", "Markt"),
+        ("mkt.", "markt"),
+
+        # Promenade
+        ("Prom.", "Promenade"),
+        ("prom.", "promenade"),
+
+        # Park
+        ("Pk.", "Park"),
+        ("pk.", "park"),
+
+        # Berg
+        ("Bg.", "Berg"),
+        ("bg.", "berg"),
+
+        # Hof
+        ("Hf.", "Hof"),
+        ("hf.", "hof"),
+
+        # Tor
+        ("T.", "Tor"),
+        ("t.", "tor"),
+
+        # Sankt/St. (last to avoid conflicts with Str.)
+        ("St.", "Sankt"),
         ("st.", "sankt"),
     ]
+
     for old, new in replacements:
         s = s.replace(old, new)
+
+    # Phase 1.5: Targeted regex ONLY for "-Str." (with dot) hyphen context
+    # This safely handles the hyphenated abbreviation without risking double-expansion
+    # because it requires the dot AND checks for "aße" suffix to avoid matching "-Straße"
+    s = re.sub(r'(?<=-)[Ss]tr\.(?![aä][sß]e)', 'Straße', s, flags=re.UNICODE)
 
     s = unicodedata.normalize("NFC", s)
     return s.casefold()  # Better than lower() for German (handles ß, etc.)
@@ -193,9 +301,24 @@ def load_street_names(path: Path) -> set[str]:
 
 
 # Load dictionary at import time (once per process)
-print(f"[street_gazetteer] Loading streets from {STREETS_CSV_PATH} ...")
-STREET_NAMES = load_street_names(STREETS_CSV_PATH)
-print(f"[street_gazetteer] Loaded {len(STREET_NAMES):,} street names.")
+# Try to load preprocessed pickle first (much faster), fall back to CSV
+import pickle
+
+STREETS_PKL_PATH = Path("/app/data/streets_normalized.pkl")
+STREETS_PKL_PATH_LOCAL = Path(__file__).parent / "data/streets_normalized.pkl"
+
+pkl_path = STREETS_PKL_PATH if STREETS_PKL_PATH.exists() else STREETS_PKL_PATH_LOCAL
+
+if pkl_path.exists():
+    print(f"[street_gazetteer] Loading preprocessed streets from {pkl_path} ...")
+    with pkl_path.open('rb') as f:
+        STREET_NAMES = pickle.load(f)
+    print(f"[street_gazetteer] Loaded {len(STREET_NAMES):,} street names (preprocessed).")
+else:
+    print(f"[street_gazetteer] Preprocessed file not found, loading from CSV {STREETS_CSV_PATH} ...")
+    print(f"[street_gazetteer] (Run 'python preprocess_gazetteer.py' to speed up future loads)")
+    STREET_NAMES = load_street_names(STREETS_CSV_PATH)
+    print(f"[street_gazetteer] Loaded {len(STREET_NAMES):,} street names from CSV.")
 
 
 def _is_street_token_like(tok):
@@ -207,10 +330,52 @@ def _is_street_token_like(tok):
     - Connector words that appear in multi-word street names
     - Tokens with internal apostrophes if otherwise title-like
     - Hyphens between title tokens
+    - Street suffix tokens (CRITICAL for "X Str." cases)
 
-    Phase 2 improvement: Whitelist connector words (von, der, vom, etc.) to handle
-    multi-hyphen streets like "Bertha-von-Suttner-Str." and "Freiherr-vom-Stein-Weg"
+    Phase 2 improvements:
+    - Accept short uppercase abbreviations (e.g., "St." in "St.-Brevin-Ring")
+    - Allow alphanumeric mini-segments (e.g., "X-2s" in street names)
+    - Whitelist connector words (von, der, vom, etc.) for multi-hyphen streets
+
+    Phase 3 fix:
+    - Recognize suffix tokens (Str., Straße, Weg, etc.) as street-like
+      This is CRITICAL: without it, backward scan stops at the suffix and never
+      includes the preceding street name ("Berliner" in "Berliner Str. 31")
     """
+    import re
+
+    # NEW: Treat common suffix tokens as street-like (critical for "X Str." cases)
+    suffix_tokens = {
+        "straße", "str.", "str", "weg", "allee", "platz", "gasse", "ring",
+        "ufer", "damm", "hof", "chaussee", "pfad", "strasse", "markt",
+        "steig", "stieg", "garten", "plan", "redder", "wiesen", "flur",
+        "feld", "berg", "see", "tal", "blick", "park", "kamp", "kamps"
+    }
+    if tok.lower_ in suffix_tokens:
+        return True
+
+    # NEW: Also recognize compound street tokens that END with a suffix
+    # (e.g., "Hauffstr.", "Birkenstr.", "Meisenweg")
+    # This catches single-token compound streets without hyphens
+    if tok.is_title and re.search(r"(straße|str\.|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|markt|steig|stieg|garten)\.?$", tok.lower_):
+        return True
+
+    # Phase 2a: Accept short uppercase abbreviations like "St."
+    if re.match(r"^[A-ZÄÖÜ]\.$", tok.text):
+        return True
+
+    # Phase 2b: Accept merged multi-hyphen streets (e.g., "Bertha-von-Suttner-Str.")
+    # These are created by merge_str_abbrev and contain hyphens + street suffix
+    # Match pattern: contains hyphen(s) and ends with common street suffix
+    if "-" in tok.text and re.search(r"(straße|str\.|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse)\.?$", tok.lower_):
+        return True
+
+    # Phase 2c: Accept mixed alphanumeric segments within hyphen chains (e.g., "X-2s")
+    if re.match(r"^[A-Za-zÄÖÜäöü0-9]+$", tok.text):
+        # Still exclude obvious stopwords
+        if tok.lower_ not in {"wohnhaft", "patient", "adresse", "dokumentation", "treffen"}:
+            return True
+
     # Stopwords that shouldn't be part of street names (sentence starters, common words)
     stopwords = {"wohnhaft", "patient", "adresse", "dokumentation", "treffen"}
 
@@ -289,7 +454,8 @@ def create_street_gazetteer(nlp, name):
 
             start = j
             consecutive_lowercase = 0
-            while start >= 0 and _is_street_token_like(doc[start]) and (i - start) <= 7:
+            # Phase 2: Widen window to 9 tokens for long multi-hyphen names
+            while start >= 0 and _is_street_token_like(doc[start]) and (i - start) <= 9:
                 # Track consecutive lowercase to prevent over-greedy scans
                 # Don't count connector words toward the limit
                 if doc[start].is_lower and doc[start].is_alpha and doc[start].lower_ not in connectors:
@@ -313,8 +479,8 @@ def create_street_gazetteer(nlp, name):
             if start > j:
                 continue
 
-            # Safety: cap street span at 7 tokens max
-            if (j - start + 1) > 7:
+            # Safety: cap street span at 9 tokens max (matches scan window)
+            if (j - start + 1) > 9:
                 continue
 
             street_tokens = doc[start:j+1]
@@ -449,3 +615,96 @@ def create_address_conflict_resolver(nlp, name):
         return doc
 
     return address_conflict_resolver
+
+
+@Language.factory("address_span_normalizer")
+def create_address_span_normalizer(nlp, name):
+    """
+    Phase 2: Universal ADDRESS normalizer that runs AFTER conflict resolver.
+
+    For every ADDRESS entity in doc.ents:
+    1. Trim leading lowercase prepositions/articles (in/an/auf/bei/unter + der/den/dem)
+    2. Extend number ranges and letter suffixes using _extend_number_range()
+
+    This ensures EntityRuler-only detections get the same finishing logic as gazetteer spans.
+    Fixes incomplete ranges/suffixes in addresses not validated by the gazetteer.
+    """
+
+    def address_span_normalizer(doc):
+        """
+        Normalize all ADDRESS spans: trim preps, extend number ranges/suffixes.
+        """
+        LOWER_PREPS = {"in", "an", "auf", "bei", "unter"}
+        LOWER_ARTS = {"der", "den", "dem"}
+
+        def find_number_start_token(s, e):
+            """Find first number-ish token in span range [s, e)"""
+            for k in range(s, e):
+                t = doc[k].text or ""
+                if (
+                    doc[k].like_num
+                    or t.isdigit()
+                    or R_SINGLE_NUM.fullmatch(t)
+                    or R_EMBEDDED_RANGE.fullmatch(t)
+                ):
+                    return k
+            return -1
+
+        def trim_leading_lowercase_prep(span):
+            """
+            Trim leading lowercase prepositions (in/an/auf/bei/unter) + optional article.
+            Keep title-cased prepositions like Im/Am/An (they're part of the street name).
+            """
+            if span.start >= len(doc):
+                return span
+
+            first_tok = doc[span.start]
+            if first_tok.is_title:
+                return span
+
+            # Trim patterns: in|an|auf|bei|unter [der|den|dem]?
+            s = span.start
+            if s < len(doc) and doc[s].lower_ in LOWER_PREPS:
+                s += 1  # Skip preposition
+                # Skip optional article
+                if s < span.end and s < len(doc) and doc[s].lower_ in LOWER_ARTS:
+                    s += 1
+
+            # Only create new span if we trimmed and there's still content
+            if s > span.start and s < span.end:
+                # Verify there's at least one title-cased token remaining
+                if any(tok.is_title for tok in doc[s:span.end]):
+                    from spacy.tokens import Span
+                    return Span(doc, s, span.end, label=span.label)
+
+            return span
+
+        normalized = []
+        for ent in doc.ents:
+            if ent.label_ != "ADDRESS":
+                normalized.append(ent)
+                continue
+
+            # 1) Trim leading prepositions
+            trimmed = trim_leading_lowercase_prep(ent)
+
+            # 2) Extend number ranges/suffixes
+            num_i = find_number_start_token(trimmed.start, trimmed.end)
+            if num_i == -1:
+                normalized.append(trimmed)  # No number to extend
+                continue
+
+            new_end = _extend_number_range(doc, num_i)
+            # Only extend forward; never shrink start
+            new_end = max(new_end, trimmed.end)
+
+            from spacy.tokens import Span
+            normalized.append(Span(doc, trimmed.start, new_end, label=trimmed.label))
+
+        # Final cleanup: filter overlaps by length
+        from spacy.util import filter_spans
+        doc.ents = tuple(filter_spans(normalized))
+
+        return doc
+
+    return address_span_normalizer

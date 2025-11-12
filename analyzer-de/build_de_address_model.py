@@ -50,7 +50,8 @@ else:
 # Expanded suffix list from failure analysis
 # Common: straße, str, weg, allee, platz, gasse, ring, ufer, damm, hof, chaussee, pfad
 # Added: garten, plan, redder, wiesen, flur, feld, berg, see, tal, blick, park, kamp, kamps
-STREET_SUFFIX_REGEX = r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt|garten|plan|redder|wiesen|flur|feld|berg|see|tal|blick|park|kamp|kamps)$"
+# IMPORTANT: Allow optional period at end to match merged tokens like "Hauffstr." (not just "Hauffstr")
+STREET_SUFFIX_REGEX = r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt|garten|plan|redder|wiesen|flur|feld|berg|see|tal|blick|park|kamp|kamps)\.?$"
 
 # Token-level patterns for typical German street addresses
 # Note: German compound street names are single tokens (e.g., "Hauptstraße")
@@ -70,6 +71,24 @@ patterns = [
                     "REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"
                 }
             },
+        ],
+    },
+    # 1b) Two-token suffix street: "<Title>+ <Suffix> [.] <Number>"
+    # CRITICAL FIX: This catches "Berliner Str. 31", "Carl-Hesselmann Weg 107", etc.
+    # Without this, EntityRuler only matches if street+suffix are in ONE token.
+    # Examples: "Berliner Str. 31", "Carl-Hesselmann Weg 107", "Papiermühle 58"
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"IS_TITLE": True, "OP": "+"},   # one or more title tokens (allows "Carl-Hesselmann")
+            {"LOWER": {"IN": [
+                "straße", "str", "str.", "weg", "allee", "platz", "gasse", "ring",
+                "ufer", "damm", "hof", "chaussee", "pfad", "strasse", "markt",
+                "steig", "stieg", "garten", "plan", "redder", "wiesen", "flur",
+                "feld", "berg", "see", "tal", "blick", "park", "kamp", "kamps"
+            ]}},
+            {"IS_PUNCT": True, "OP": "?"},   # optional extra dot etc.
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
         ],
     },
     # 2) Multi-word addresses: "Am Bahnhof 3", "An der Kirche 12b"
@@ -130,6 +149,22 @@ patterns = [
             },
         ],
     },
+    # 5) Phase 2: Multi-hyphen streets with suffix token
+    # Examples: "Bertha-von-Suttner-Str. 198c", "St.-Brevin-Ring 82"
+    # Conservative pattern: requires suffix token to avoid over-matching person names
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"IS_TITLE": True},                          # e.g., Bertha, St.
+            {"ORTH": "-", "OP": "+"},                    # one or more hyphens
+            {"LOWER": {"IN": ["von", "vom", "der", "den", "dem", "und"]}, "OP": "?"},  # optional particle
+            {"IS_TITLE": True, "OP": "+"},              # Suttner, Brevin
+            {"ORTH": "-", "OP": "?"},                   # hyphen before suffix
+            {"LOWER": {"REGEX": r"^(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse)$"}},
+            {"IS_PUNCT": True, "OP": "?"},              # dot after Str
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
 ]
 
 ruler.add_patterns(patterns)
@@ -144,7 +179,7 @@ if "street_gazetteer" not in nlp.pipe_names:
 else:
     print("[build] street_gazetteer already present in pipeline.")
 
-# Add conflict resolver component LAST to handle entity precedence
+# Add conflict resolver component to handle entity precedence
 # This component reads from doc.spans["gaz_address"] and writes final doc.ents
 if "address_conflict_resolver" not in nlp.pipe_names:
     print("[build] Adding address_conflict_resolver component...")
@@ -152,8 +187,19 @@ if "address_conflict_resolver" not in nlp.pipe_names:
 else:
     print("[build] address_conflict_resolver already present in pipeline.")
 
+# Phase 2: Add universal ADDRESS normalizer AFTER conflict resolver
+# This ensures ALL ADDRESS entities (including EntityRuler-only detections) get:
+# - Full number range extension (e.g., "12-14" instead of just "12")
+# - Letter suffix capture (e.g., "144g" instead of "144")
+# - Preposition trimming (e.g., "Lilienweg" instead of "in der Lilienweg")
+if "address_span_normalizer" not in nlp.pipe_names:
+    print("[build] Adding address_span_normalizer component...")
+    nlp.add_pipe("address_span_normalizer", after="address_conflict_resolver")
+else:
+    print("[build] address_span_normalizer already present in pipeline.")
 
-# Save the complete model with EntityRuler + Street Gazetteer + Conflict Resolver
+
+# Save the complete model with all components
 Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 nlp.to_disk(OUTPUT_DIR)
 print(f"[build] Saved custom model to {OUTPUT_DIR}")

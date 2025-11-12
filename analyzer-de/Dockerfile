@@ -8,8 +8,9 @@ RUN pip install --no-cache-dir "spacy==3.7.2" && \
 # Note: Keep base image working directory (where pyproject.toml lives)
 # All our files go to /app but we don't change WORKDIR
 
-# 2) Copy OpenPLZ data
+# 2) Copy OpenPLZ data (CSV and preprocessed pickle for fast loading)
 COPY data/streets.csv /app/data/streets.csv
+COPY data/streets_normalized.pkl /app/data/streets_normalized.pkl
 
 # 3) Copy gazetteer component + sitecustomize to where Python can find them
 # Base image should have /app or similar on PYTHONPATH already
