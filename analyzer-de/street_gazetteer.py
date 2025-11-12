@@ -321,6 +321,90 @@ else:
     print(f"[street_gazetteer] Loaded {len(STREET_NAMES):,} street names from CSV.")
 
 
+############################################################################
+# FALSE POSITIVE REDUCTION
+############################################################################
+#
+# Dedicated section for reducing false positives in medical/technical texts.
+# These filters reject patterns that look address-like but are clearly not.
+#
+
+def _is_likely_false_positive(doc, span_start: int, span_end: int, number_token_idx: int) -> bool:
+    """
+    Detect false positive patterns in ADDRESS candidates.
+
+    Returns True if the span should be REJECTED (is a false positive).
+
+    Rejection criteria:
+    1. Number immediately followed by time units or percent
+       (e.g., "2 Wochen", "60 %", "5 Tage")
+    2. Number preceded within 2 tokens by quantity indicators
+       (e.g., "etwa 2", "ca. 90", "zwischen 40", "bis zu 16")
+
+    Args:
+        doc: spaCy Doc object
+        span_start: Start index of proposed ADDRESS span
+        span_end: End index of proposed ADDRESS span
+        number_token_idx: Index of the number token within the span
+
+    Returns:
+        True if this is likely a false positive (reject), False otherwise (keep)
+    """
+    # Rule 1: Check if number is immediately followed by time unit or percent
+    # Examples: "2 Wochen", "90 %", "5 Tage", "16 Wochen", "60 Jahre"
+    TIME_UNITS = {
+        "%", "prozent",
+        "tag", "tage", "tagen", "tags",
+        "woche", "wochen",
+        "monat", "monate", "monaten", "monats",
+        "jahr", "jahre", "jahren", "jahres",
+        "stunde", "stunden"
+    }
+
+    # Check token immediately after the number
+    next_idx = number_token_idx + 1
+    if next_idx < len(doc):
+        next_tok = doc[next_idx]
+        # Skip punctuation to check the next content token
+        while next_idx < len(doc) and doc[next_idx].is_punct:
+            next_idx += 1
+
+        if next_idx < len(doc):
+            next_tok = doc[next_idx]
+            if next_tok.lower_ in TIME_UNITS:
+                return True  # REJECT: "5 Tage", "90 %"
+
+    # Rule 2: Check if number is preceded within 2 tokens by quantity indicator
+    # Examples: "etwa 2", "ca. 90", "zwischen 40", "bis zu 16", "über 8", "ab 60", "für 10"
+    QUANTITY_INDICATORS = {
+        "ca", "ca.", "cirka", "zirka",
+        "etwa", "ungefähr", "rund",
+        "bis", "zu",
+        "über", "ueber",
+        "zwischen",
+        "ab",
+        "für", "fuer",
+        "von",
+        "mindestens", "höchstens", "maximal", "minimal"
+    }
+
+    # Look back up to 2 tokens before the number
+    for offset in range(1, 3):
+        check_idx = number_token_idx - offset
+        if check_idx < 0 or check_idx < span_start:
+            break
+
+        check_tok = doc[check_idx]
+        # Skip punctuation
+        if check_tok.is_punct:
+            continue
+
+        if check_tok.lower_ in QUANTITY_INDICATORS:
+            return True  # REJECT: "etwa 2", "zwischen 40"
+
+    return False  # KEEP: no false positive patterns detected
+
+
 def _is_street_token_like(tok):
     """
     Check if a token is "street-like" for backward scanning.
@@ -383,11 +467,11 @@ def _is_street_token_like(tok):
     # Phase 2c: Accept mixed alphanumeric segments within hyphen chains (e.g., "X-2s")
     if re.match(r"^[A-Za-zÄÖÜäöü0-9]+$", tok.text):
         # Still exclude obvious stopwords
-        if tok.lower_ not in {"wohnhaft", "patient", "adresse", "dokumentation", "treffen"}:
+        if tok.lower_ not in {"wohnhaft", "patient", "adresse", "dokumentation", "treffen", "wohnung"}:
             return True
 
     # Stopwords that shouldn't be part of street names (sentence starters, common words)
-    stopwords = {"wohnhaft", "patient", "adresse", "dokumentation", "treffen"}
+    stopwords = {"wohnhaft", "patient", "adresse", "dokumentation", "treffen", "wohnung"}
 
     # Connector words that can appear in street names (don't count toward consecutive lowercase limit)
     connectors = {"am", "an", "auf", "in", "im", "bei", "zum", "zur", "unter",
@@ -498,6 +582,21 @@ def create_street_gazetteer(nlp, name):
             if start > j:
                 continue
 
+            # Phase 5: Trim leading sentence context (prepositions + optional articles)
+            # Streets like "Am Grünen Winkel" have "Am" as part of the name (contraction of "an dem")
+            # But "in der Bertha-von-Suttner-Str." or "in Franz-von-Kobell-Str." have prepositions as sentence context
+            # Heuristic: If we start with a plain preposition (not a contraction), trim it (+ optional article)
+            sentence_preps = {"in", "bei", "von", "nahe", "unweit", "gegenüber", "neben", "an", "auf"}
+            if start <= j and doc[start].lower_ in sentence_preps:
+                # Check if next token is an article (der, den, dem, die, das)
+                if start + 1 <= j and doc[start + 1].lower_ in {"der", "den", "dem", "die", "das"}:
+                    start += 2  # Skip both prep and article
+                else:
+                    start += 1  # Skip just the prep
+
+            if start > j:
+                continue
+
             # Safety: cap street span at 9 tokens max (matches scan window)
             if (j - start + 1) > 9:
                 continue
@@ -511,6 +610,14 @@ def create_street_gazetteer(nlp, name):
             # Build ADDRESS span = street + full number (incl. range / optional letters / trailing punct)
             span_start = start
             span_end = _extend_number_range(doc, i)
+
+            # FALSE POSITIVE FILTER: Reject medical/technical patterns
+            # Check BEFORE creating the span to avoid false positives like:
+            # - "etwa 2 von 10.000", "zwischen 40 %", "für 10 Tage"
+            # - "ab 60 Jahren", "Pro Jahr erkranken etwa 2"
+            if _is_likely_false_positive(doc, span_start, span_end, i):
+                continue  # Skip this candidate - likely false positive
+
             label = doc.vocab.strings["ADDRESS"]
             span = Span(doc, span_start, span_end, label=label)
             gaz_addresses.append(span)
@@ -727,3 +834,147 @@ def create_address_span_normalizer(nlp, name):
         return doc
 
     return address_span_normalizer
+
+
+@Language.factory("address_precision_filter")
+def create_address_precision_filter(nlp, name):
+    """
+    Precision-focused ADDRESS filter that rejects medical/technical false positives.
+
+    Runs AFTER conflict resolution but BEFORE span normalization to filter ALL ADDRESS
+    entities (both EntityRuler and gazetteer).
+
+    Rejection criteria:
+    - Month + year patterns (e.g., "Februar 2025")
+    - Season patterns (e.g., "Saison 2012/2013")
+    - Percentage patterns (e.g., "90 %")
+    - Type/Part patterns (e.g., "Typ 1", "Teil 1")
+    - Legal references (e.g., "Abs. 1", "§ 8")
+    - Quantity + time unit (e.g., "etwa 2 Wochen", "ab 60 Jahren")
+    - Age references (e.g., "Alter von 6", "Jugendliche bis 19")
+    - Bare ranges without street suffixes (e.g., "40 - 60")
+
+    Keeps ADDRESS entities that:
+    - Have street suffixes (Straße, Weg, Platz, etc.)
+    - Are confirmed by gazetteer
+    - Don't match false positive patterns
+    """
+    import re
+
+    MONTHS = {"januar","februar","märz","maerz","april","mai","juni","juli",
+              "august","september","oktober","november","dezember","sept."}
+    QUANT_TRIGGERS = {"ca.","circa","etwa","ungefähr","über","ueber","bis","zwischen","ab","für","fuer"}
+    TIME_UNITS = {"tage","tag","wochen","woche","monate","monat","jahre","jahr","trimenon","stunden","stunde"}
+    AGE_WORDS = {"alter","jugendliche","jugendlichen","personen","menschen","kinder","erwachsenen"}
+
+    # Regex patterns for common false positives
+    SEASON_RE = re.compile(r"\b(?:saison|spielzeit)\s+\d{4}/\d{2,4}\b", re.I)
+    YEAR_RE   = re.compile(r"\b(19|20)\d{2}\b")
+    PCT_RE    = re.compile(r"\b\d{1,3}\s*%\b")
+    TYP_TEIL_RE = re.compile(r"\b(?:typ|teil)\s*\d+\b", re.I)
+    PARA_RE   = re.compile(r"\babs\.\s*\d+\b", re.I)
+    PARA_SEC  = re.compile(r"§\s*\d+\b")
+
+    # Street suffix set (mirrors _is_street_token_like)
+    SUFFIX = {"straße","str.","str","weg","platz","allee","gasse","ring","ufer",
+              "damm","hof","chaussee","pfad","markt","steig","stieg","garten",
+              "gang","twiete","terrasse","siedlung","winkel","wald","brink","rain",
+              "grund","höhe","anger","bruch","heide","holz","brücke","bruecke","tor",
+              "reihe","umgehung","ortsumfahrung","bahnbogen","hügel","huegel","wegle"}
+
+    def has_suffix(doc, span):
+        """Check if span contains a street suffix token or ends with suffix pattern."""
+        s, e = span.start, span.end
+        # Locate number start inside span
+        num_i = -1
+        for k in range(s, e):
+            if doc[k].like_num or re.match(r"^[0-9]+[A-Za-z]?(?:[-/–—][0-9]+[A-Za-z]?)?[.,;:!?]?$", doc[k].text or ""):
+                num_i = k
+                break
+
+        # Check left side of span (street name part)
+        left = doc[s:num_i if num_i != -1 else e]
+        text = left.text.casefold()
+
+        # Check for suffix tokens
+        if any(tok.lower_ in SUFFIX for tok in left):
+            return True
+
+        # Check for suffix pattern at end
+        return bool(re.search(r"(straße|str\.|str|weg|platz|allee|gasse|ring|ufer|damm|hof|chaussee|pfad|markt|steig|stieg|garten|gang|twiete|terrasse|siedlung|winkel|wald|brink|rain|grund|höhe|anger|bruch|heide|holz|brücke|bruecke|tor|reihe|umgehung|ortsumfahrung|bahnbogen|hügel|huegel|wegle)\.?$", text))
+
+    def looks_like_non_address(text):
+        """Check if text matches common false positive patterns."""
+        t = text.casefold()
+
+        # Months + year (e.g., "Februar 2025")
+        if any(m in t for m in MONTHS) and YEAR_RE.search(t):
+            return True
+
+        # Season patterns (e.g., "Saison 2012/2013")
+        if SEASON_RE.search(t):
+            return True
+
+        # Percentage (e.g., "90 %")
+        if PCT_RE.search(t):
+            return True
+
+        # Type/Part references (e.g., "Typ 1", "Teil 1")
+        if TYP_TEIL_RE.search(t):
+            return True
+
+        # Legal references (e.g., "Abs. 1", "§ 8")
+        if PARA_RE.search(t) or PARA_SEC.search(t):
+            return True
+
+        # Quantity phrases: quantity trigger + number + time unit
+        # (e.g., "etwa 2 Wochen", "ab 60 Jahren", "bis 19 Jahre")
+        if any(q in t for q in QUANT_TRIGGERS) and any(u in t for u in TIME_UNITS):
+            return True
+
+        # Age/period phrases (e.g., "Alter von 6", "Jugendliche bis 19", "Personen ab 60")
+        # Exclude if it contains a year (e.g., "im Jahr 2013" is okay)
+        if any(w in t for w in AGE_WORDS) and YEAR_RE.search(t) is None:
+            return True
+
+        return False
+
+    def address_precision_filter(doc):
+        """
+        Filter ADDRESS entities to remove false positives.
+
+        Keeps entities that:
+        1. Don't match false positive patterns
+        2. Have street suffixes OR overlap with gazetteer confirmations
+        """
+        kept = []
+        gaz_hits = list(doc.spans.get("gaz_address", []))
+
+        for ent in doc.ents:
+            if ent.label_ != "ADDRESS":
+                kept.append(ent)
+                continue
+
+            span_text = ent.text
+
+            # Rule 1: Reject classic non-address contexts
+            if looks_like_non_address(span_text):
+                continue
+
+            # Rule 2: Require suffix OR gazetteer confirmation
+            has_indicator = has_suffix(doc, ent)
+            overlaps_gaz = any(
+                not (ent.end_char <= g.start_char or g.end_char <= ent.start_char)
+                for g in gaz_hits
+            )
+
+            if not (has_indicator or overlaps_gaz):
+                continue
+
+            kept.append(ent)
+
+        from spacy.util import filter_spans
+        doc.ents = tuple(filter_spans(kept))
+        return doc
+
+    return address_precision_filter

@@ -278,14 +278,23 @@ if "address_conflict_resolver" not in nlp.pipe_names:
 else:
     print("[build] address_conflict_resolver already present in pipeline.")
 
-# Phase 2: Add universal ADDRESS normalizer AFTER conflict resolver
+# Phase 5: Add precision filter to reject medical/technical false positives
+# This component runs AFTER conflict resolution to filter ALL ADDRESS entities
+# (both EntityRuler and gazetteer) based on semantic patterns
+if "address_precision_filter" not in nlp.pipe_names:
+    print("[build] Adding address_precision_filter component...")
+    nlp.add_pipe("address_precision_filter", after="address_conflict_resolver")
+else:
+    print("[build] address_precision_filter already present in pipeline.")
+
+# Phase 2: Add universal ADDRESS normalizer AFTER precision filter
 # This ensures ALL ADDRESS entities (including EntityRuler-only detections) get:
 # - Full number range extension (e.g., "12-14" instead of just "12")
 # - Letter suffix capture (e.g., "144g" instead of "144")
 # - Preposition trimming (e.g., "Lilienweg" instead of "in der Lilienweg")
 if "address_span_normalizer" not in nlp.pipe_names:
     print("[build] Adding address_span_normalizer component...")
-    nlp.add_pipe("address_span_normalizer", after="address_conflict_resolver")
+    nlp.add_pipe("address_span_normalizer", after="address_precision_filter")
 else:
     print("[build] address_span_normalizer already present in pipeline.")
 
