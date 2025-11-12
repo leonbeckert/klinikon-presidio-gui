@@ -346,6 +346,7 @@ def _is_street_token_like(tok):
 
     # NEW: Treat common suffix tokens as street-like (critical for "X Str." cases)
     # Phase 3: Expanded with regional variants (gang, twiete, terrasse, siedlung, winkel, etc.)
+    # Phase 4: Added brücke, tor, gässchen/gässle, steige, lohe, höfe, reihe, umgehung, bahnbogen, hügel, wegle
     suffix_tokens = {
         "straße", "str.", "str", "weg", "allee", "platz", "gasse", "ring",
         "ufer", "damm", "hof", "chaussee", "pfad", "strasse", "markt",
@@ -353,7 +354,10 @@ def _is_street_token_like(tok):
         "feld", "berg", "see", "tal", "blick", "park", "kamp", "kamps",
         "gang", "twiete", "twieten", "terrasse", "terrassen", "siedlung",
         "winkel", "äcker", "acker", "wald", "brink", "rain", "grund",
-        "höhe", "hang", "anger", "bruch", "heide", "holz"
+        "höhe", "hang", "anger", "bruch", "heide", "holz",
+        "brücke", "bruecke", "tor", "gässchen", "gaesschen", "gässle", "gaessle",
+        "steige", "lohe", "höfe", "hoefe", "reihe", "umgehung", "ortsumfahrung",
+        "bahnbogen", "hügel", "huegel", "wegle"
     }
     if tok.lower_ in suffix_tokens:
         return True
@@ -361,8 +365,8 @@ def _is_street_token_like(tok):
     # NEW: Also recognize compound street tokens that END with a suffix
     # (e.g., "Hauffstr.", "Birkenstr.", "Meisenweg", "Papiermühle", "Laubengang")
     # This catches single-token compound streets without hyphens
-    # Phase 3: Expanded regex to include regional suffix variants
-    if tok.is_title and re.search(r"(straße|str\.|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|markt|steig|stieg|garten|gang|twiete|twieten|terrasse|terrassen|siedlung|winkel|äcker|acker|wald|brink|rain|grund|höhe|hang|anger|bruch|heide|holz)\.?$", tok.lower_):
+    # Phase 3/4: Expanded regex to include regional suffix variants
+    if tok.is_title and re.search(r"(straße|str\.|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|markt|steig|stieg|garten|gang|twiete|twieten|terrasse|terrassen|siedlung|winkel|äcker|acker|wald|brink|rain|grund|höhe|hang|anger|bruch|heide|holz|brücke|bruecke|tor|gässchen|gaesschen|gässle|gaessle|steige|lohe|höfe|hoefe|reihe|umgehung|bahnbogen|hügel|huegel|wegle)\.?$", tok.lower_):
         return True
 
     # Phase 2a: Accept short uppercase abbreviations like "St."
@@ -372,8 +376,8 @@ def _is_street_token_like(tok):
     # Phase 2b: Accept merged multi-hyphen streets (e.g., "Bertha-von-Suttner-Str.")
     # These are created by merge_str_abbrev and contain hyphens + street suffix
     # Match pattern: contains hyphen(s) and ends with common street suffix
-    # Phase 3: Expanded suffix list
-    if "-" in tok.text and re.search(r"(straße|str\.|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|gang|twiete|terrasse|siedlung|winkel|wald|brink|grund|höhe|anger|bruch|heide|holz)\.?$", tok.lower_):
+    # Phase 3/4: Expanded suffix list
+    if "-" in tok.text and re.search(r"(straße|str\.|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|pfad|strasse|gang|twiete|terrasse|siedlung|winkel|wald|brink|grund|höhe|anger|bruch|heide|holz|brücke|bruecke|tor|bahnbogen)\.?$", tok.lower_):
         return True
 
     # Phase 2c: Accept mixed alphanumeric segments within hyphen chains (e.g., "X-2s")
@@ -473,14 +477,23 @@ def create_street_gazetteer(nlp, name):
                 start -= 1
             start += 1
 
-            # G1: Skip Roman numerals at the beginning (e.g., "II. Vereinsstr.")
+            # G1/Phase 4: Handle Roman numerals intelligently
             # Roman numerals pattern: I, II, III, IV, V, VI, VII, VIII, IX, X, etc.
-            if start > 0 and re.match(r"^[IVX]+$", doc[start].text):
-                # Skip the Roman numeral
-                start += 1
-                # Skip any following punctuation
-                while start <= j and doc[start].is_punct:
+            # Phase 4: Only skip if NOT followed by street-like content (e.g., "Weg III 28" should keep "III")
+            if start > 0 and re.match(r"^[IVX]+\.?$", doc[start].text):
+                # Peek at next non-punct token
+                nxt = start + 1
+                while nxt <= j and doc[nxt].is_punct:
+                    nxt += 1
+                # Only skip the Roman numeral if NOT followed by street-like content
+                if nxt <= j and _is_street_token_like(doc[nxt]):
+                    pass  # keep Roman numeral as part of the street name
+                else:
+                    # Skip the Roman numeral
                     start += 1
+                    # Skip any following punctuation
+                    while start <= j and doc[start].is_punct:
+                        start += 1
 
             if start > j:
                 continue

@@ -52,8 +52,10 @@ else:
 # Phase 2: garten, plan, redder, wiesen, flur, feld, berg, see, tal, blick, park, kamp, kamps
 # Phase 3: gang, twiete, twieten, terrasse, terrassen, siedlung, winkel, äcker, acker, wald,
 #          brink, rain, grund, höhe, hang, anger, bruch, heide, holz
+# Phase 4: brücke, bruecke, tor, gässchen, gaesschen, gässle, gaessle, steige, lohe, höfe, hoefe,
+#          reihe, umgehung, ortsumfahrung, bahnbogen, hügel, huegel, wegle
 # IMPORTANT: Allow optional period at end to match merged tokens like "Hauffstr." (not just "Hauffstr")
-STREET_SUFFIX_REGEX = r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt|garten|plan|redder|wiesen|flur|feld|berg|see|tal|blick|park|kamp|kamps|gang|twiete|twieten|terrasse|terrassen|siedlung|winkel|äcker|acker|wald|brink|rain|grund|höhe|hang|anger|bruch|heide|holz)\.?$"
+STREET_SUFFIX_REGEX = r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt|garten|plan|redder|wiesen|flur|feld|berg|see|tal|blick|park|kamp|kamps|gang|twiete|twieten|terrasse|terrassen|siedlung|winkel|äcker|acker|wald|brink|rain|grund|höhe|hang|anger|bruch|heide|holz|brücke|bruecke|tor|gässchen|gaesschen|gässle|gaessle|steige|lohe|höfe|hoefe|reihe|umgehung|ortsumfahrung|bahnbogen|hügel|huegel|wegle)\.?$"
 
 # Token-level patterns for typical German street addresses
 # Note: German compound street names are single tokens (e.g., "Hauptstraße")
@@ -151,17 +153,19 @@ patterns = [
             },
         ],
     },
-    # 5) Phase 2/3: Multi-hyphen streets with suffix token
+    # 5) Phase 2/3/4: Multi-hyphen streets with suffix token
     # Examples: "Bertha-von-Suttner-Str. 198c", "Hans-im-Glück-Weg 153", "Franz-von-Kobell-Str. 19"
+    #           "Viktor-von-Scheffel-Str.", "Christoph-von-Schmid-Str."
     # Conservative pattern: requires suffix token to avoid over-matching person names
     # Phase 3: Expanded particles to include "im", "am", "zum", "zur" for cases like "Hans-im-Glück"
+    # Phase 4: Added "zu", "ob", "bei" for broader coverage
     {
         "label": "ADDRESS",
         "pattern": [
-            {"IS_TITLE": True},                          # e.g., Bertha, Hans, Franz
+            {"IS_TITLE": True},                          # e.g., Bertha, Hans, Franz, Viktor
             {"ORTH": "-", "OP": "+"},                    # one or more hyphens
-            {"LOWER": {"IN": ["von", "vom", "der", "den", "dem", "und", "im", "am", "zum", "zur"]}, "OP": "?"},  # optional particle
-            {"IS_TITLE": True, "OP": "+"},              # Suttner, Glück, Kobell
+            {"LOWER": {"IN": ["von", "vom", "der", "den", "dem", "und", "im", "am", "zum", "zur", "zu", "ob", "bei"]}, "OP": "?"},  # optional particle
+            {"IS_TITLE": True, "OP": "+"},              # Suttner, Glück, Kobell, Scheffel
             {"ORTH": "-", "OP": "?"},                   # hyphen before suffix
             {"LOWER": {"REGEX": r"^(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse)$"}},
             {"IS_PUNCT": True, "OP": "?"},              # dot after Str
@@ -179,17 +183,67 @@ patterns = [
             {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
         ],
     },
-    # 1c) Phase 3: Composite phrase pattern (Adjective + suffix + short PP + Number)
-    # Example: "südlicher Serviceweg am Mittellandkanal 36"
+    # 2c) Phase 4: Prepositional with lowercase adjectives
+    # Examples: "Im alten Garten 58", "In der großen Harras 157", "Am alten Sägewerk 64"
+    # Allows 0-2 lowercase tokens (adjectives/determiners) between prep/article and Title
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"LOWER": {"IN": ["im", "am", "an", "auf", "unter", "vor", "hinter", "bei", "zum", "zur", "zu", "in"]}},
+            {"LOWER": {"IN": ["der", "den", "dem"]}, "OP": "?"},
+            {"IS_LOWER": True, "OP": "{0,2}"},           # e.g., alten / großen / neuen
+            {"IS_TITLE": True, "OP": "+"},
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 2d) Phase 4: DDR-style and "X der/des Y" roads
+    # Examples: "Str. der Einheit 185", "Platz der Freiheit 57", "Str. des Fortschritts 183"
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"LOWER": {"IN": ["straße", "str.", "str", "platz", "weg"]}},
+            {"LOWER": {"IN": ["der", "des"]}},
+            {"IS_TITLE": True, "OP": "+"},
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 2e) Phase 4: Low German dialect openers
+    # Examples: "Op de Lichten 148", "An de Kerkhoff 178", "Up de Hee 28", "Achtern Knick 188"
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"LOWER": {"IN": ["op", "an", "achtern", "up", "auf'n", "auf'm"]}},
+            {"LOWER": "de", "OP": "?"},
+            {"IS_TITLE": True, "OP": "+"},
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 2f) Phase 4: Broader prepositional families
+    # Examples: "Hinter den Höfen 71f", "Vor dem Delftor 36f", "Ob der Schwalbenhälde 193"
+    #           "Zu den Eichen 169a", "Zwischen den Höfen 71", "Nach der Wipse 176e"
+    {
+        "label": "ADDRESS",
+        "pattern": [
+            {"LOWER": {"IN": ["vor", "bei", "hinter", "nach", "ob", "zu", "unter", "unterm", "zwischen"]}},
+            {"LOWER": {"IN": ["der", "den", "dem", "die"]}, "OP": "?"},
+            {"IS_TITLE": True, "OP": "+"},
+            {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
+        ],
+    },
+    # 1c) Phase 3/4: Composite phrase pattern (Adjective + suffix + short PP + Number)
+    # Examples: "südlicher Serviceweg am Mittellandkanal 36", "Weg am Silo 73"
+    #           "Hinterm kleinen Kamp 51", "Strandübergang 12 Ahrenshoop 175"
+    # Phase 4: Broadened PP set, allow lowercase adjectives in landmark phrase
     {
         "label": "ADDRESS",
         "pattern": [
             {"IS_LOWER": True, "OP": "?"},                          # optional adjective like "südlicher"
-            {"IS_TITLE": True, "OP": "+"},                          # e.g., Serviceweg
-            {"LOWER": {"REGEX": STREET_SUFFIX_REGEX}},              # ensure it's a real suffixy head
+            {"IS_TITLE": True, "OP": "+"},                          # e.g., Serviceweg / Strandübergang
+            {"LOWER": {"REGEX": STREET_SUFFIX_REGEX}, "OP": "?"},  # allow both with/without suffix
             {"IS_PUNCT": True, "OP": "?"},                          # optional hyphen/dot
-            {"LOWER": {"IN": ["am", "an", "im", "in", "bei"]}, "OP": "?"},  # short PP introducing landmark
-            {"IS_TITLE": True, "OP": "*"},                          # Mittellandkanal (allow multi-token)
+            {"LOWER": {"IN": ["am", "an", "im", "in", "bei", "hinter", "vor", "hinterm"]}, "OP": "?"},  # short PP
+            {"IS_LOWER": True, "OP": "{0,2}"},                      # kleinen / alten
+            {"IS_TITLE": True, "OP": "*"},                          # Mittellandkanal / Ahrenshoop (allow multi-token)
             {"TEXT": {"REGEX": r"^[0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?[.,;:!?]?$"}}
         ],
     },
