@@ -45,12 +45,16 @@ def _extend_number_range(doc, start_i: int) -> int:
         end += 1
 
     # Edge case fix: if we only have a single number (no letter yet) and next is a letter
-    # immediately followed by punctuation or PLZ, include that letter
+    # immediately followed by punctuation, PLZ, or end of string, include that letter
     # This handles cases like "38g, Friedberg" where 'g' is tokenized separately
     if end < len(doc) and R_LETTER.fullmatch(doc[end].text or ""):
-        next_tok = doc[end + 1] if end + 1 < len(doc) else None
-        # Include letter if followed by punctuation or PLZ
-        if next_tok and ((next_tok.is_punct and next_tok.text in {".", ",", ";", ":"}) or R_PLZ.fullmatch(next_tok.text or "")):
+        # Include letter if at boundary (end of doc, punctuation, or PLZ)
+        next_is_boundary = (
+            (end + 1 == len(doc)) or  # End of string
+            (end + 1 < len(doc) and doc[end + 1].is_punct and doc[end + 1].text in {".", ",", ";", ":"}) or  # Punctuation
+            (end + 1 < len(doc) and R_PLZ.fullmatch(doc[end + 1].text or ""))  # PLZ
+        )
+        if next_is_boundary:
             end += 1
 
     return end
@@ -90,7 +94,7 @@ def normalize_street_name(name: str) -> str:
         s = s.replace(old, new)
 
     s = unicodedata.normalize("NFC", s)
-    return s.lower()
+    return s.casefold()  # Better than lower() for German (handles ß, etc.)
 
 
 def load_street_names(path: Path) -> set[str]:
@@ -131,6 +135,41 @@ STREET_NAMES = load_street_names(STREETS_CSV_PATH)
 print(f"[street_gazetteer] Loaded {len(STREET_NAMES):,} street names.")
 
 
+def _is_street_token_like(tok):
+    """
+    Check if a token is "street-like" for backward scanning.
+    Allows:
+    - Title case tokens
+    - Common lowercase articles/prepositions (am, an, der, etc.)
+    - Single lowercase connectors (des, der, von, etc.) between title tokens
+    - Tokens with internal apostrophes if otherwise title-like
+    - Hyphens between title tokens
+    """
+    if tok.is_title:
+        return True
+
+    # Common lowercase articles/prepositions that appear in street names
+    if tok.lower_ in {"am", "an", "auf", "in", "im", "bei", "zum", "zur", "unter", "der", "den", "dem"}:
+        return True
+
+    # Single lowercase connectors (for "Str. des Friedens", "Von-der-Leyen-Str.")
+    if tok.lower_ in {"des", "von"}:
+        return True
+
+    # Allow hyphens between title tokens
+    if tok.text == "-":
+        return True
+
+    # Allow internal apostrophes (ASCII or typographic) in title-like tokens
+    # e.g., "Auf'm" in "Auf'm Hackenfeld"
+    if ("'" in tok.text or "'" in tok.text):
+        cleaned = tok.text.replace("'", "").replace("'", "")
+        if cleaned and cleaned[0].isupper():  # Title-like after removing apostrophes
+            return True
+
+    return False
+
+
 @Language.component("street_gazetteer")
 def street_gazetteer(doc):
     """
@@ -159,9 +198,18 @@ def street_gazetteer(doc):
         if j < 0:
             continue
 
-        # Now look backwards for title-cased tokens (street name)
+        # Now look backwards for street-like tokens (title-cased, apostrophes, articles)
+        # Guard: don't allow 2+ consecutive lowercase words
         start = j
-        while start >= 0 and doc[start].is_title and (i - start) <= 7:
+        consecutive_lowercase = 0
+        while start >= 0 and _is_street_token_like(doc[start]) and (i - start) <= 7:
+            # Track consecutive lowercase to prevent over-greedy scans
+            if doc[start].is_lower and doc[start].is_alpha:
+                consecutive_lowercase += 1
+                if consecutive_lowercase >= 2:  # Stop if 2+ consecutive lowercase words
+                    break
+            else:
+                consecutive_lowercase = 0  # Reset on non-lowercase token
             start -= 1
         start += 1
 
@@ -175,6 +223,10 @@ def street_gazetteer(doc):
                 start += 1
 
         if start > j:
+            continue
+
+        # Safety: cap street span at 7 tokens max
+        if (j - start + 1) > 7:
             continue
 
         street_tokens = doc[start:j+1]

@@ -61,7 +61,7 @@ patterns = [
             {
                 "IS_TITLE": True,
                 "LOWER": {
-                    "REGEX": r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse)$"
+                    "REGEX": r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt)$"
                 }
             },
             {"IS_PUNCT": True, "OP": "?"},  # optional period after street name
@@ -93,7 +93,7 @@ patterns = [
             {
                 "IS_TITLE": True,
                 "LOWER": {
-                    "REGEX": r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse)$"
+                    "REGEX": r".*(straße|str|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|strasse|steig|stieg|markt)$"
                 }
             },
             {"IS_PUNCT": True, "OP": "?"},  # optional period after street name
@@ -120,7 +120,7 @@ patterns = [
             {"IS_TITLE": True, "OP": "+"},
             {
                 "LOWER": {
-                    "REGEX": r"(straße|str|strasse|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|steig|stieg)$"
+                    "REGEX": r"(straße|str|strasse|weg|allee|platz|gasse|ring|ufer|damm|hof|chaussee|landstraße|pfad|steig|stieg|markt)$"
                 }
             },
 
@@ -139,10 +139,11 @@ patterns = [
 ruler.add_patterns(patterns)
 
 
-# Add street gazetteer component at the end
+# Add street gazetteer component after entity_ruler but before NER
+# This ensures ADDRESS entities are claimed early and filter_spans preserves them
 if "street_gazetteer" not in nlp.pipe_names:
     print("[build] Adding street_gazetteer component...")
-    nlp.add_pipe("street_gazetteer", last=True)
+    nlp.add_pipe("street_gazetteer", after="entity_ruler")
 else:
     print("[build] street_gazetteer already present in pipeline.")
 
