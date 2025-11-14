@@ -29,4 +29,9 @@ COPY analyzer-conf.yml     /app/conf/analyzer-conf.yml
 COPY nlp-config-de.yml     /app/conf/nlp-config-de.yml
 COPY recognizers-de.yml    /app/conf/recognizers-de.yml
 
+# 6) Configure Presidio to use custom configs
+ENV RECOGNIZER_REGISTRY_CONF_FILE=/app/conf/recognizers-de.yml
+ENV NLP_CONF_FILE=/app/conf/nlp-config-de.yml
+ENV ANALYZER_CONF_FILE=/app/conf/analyzer-conf.yml
+
 EXPOSE 3000

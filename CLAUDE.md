@@ -104,7 +104,64 @@ The pickle file (`streets_normalized.pkl`) should be:
 
 ---
 
+## Docker Container Rebuild Process
+
+### When to Rebuild
+
+You MUST rebuild the Docker container whenever you modify:
+- `analyzer-de/street_gazetteer.py` (gazetteer scanner logic)
+- `analyzer-de/build_de_address_model.py` (EntityRuler patterns)
+- `analyzer-de/sitecustomize.py` (custom Python initialization)
+- Configuration files (analyzer-conf.yml, nlp-config-de.yml, recognizers-de.yml)
+
+### Rebuild Commands
+
+```bash
+# From the analyzer-de directory:
+cd analyzer-de
+docker build --no-cache -t presidio-analyzer-de .
+
+# Or use the faster cached build (only if dependencies haven't changed):
+docker build -t presidio-analyzer-de .
+
+# Then restart services from project root:
+cd ..
+docker compose down
+docker compose up -d
+
+# Wait for analyzer to be ready (~15 seconds):
+sleep 15
+```
+
+### Quick Test During Development
+
+For rapid iteration without full rebuilds, you can copy modified files directly to the running container:
+
+```bash
+# Copy updated file
+docker cp analyzer-de/street_gazetteer.py presidio-analyzer-de:/app/street_gazetteer.py
+
+# Restart analyzer to reload the module
+docker restart presidio-analyzer-de && sleep 15
+
+# Test your changes
+python3 test_street_recognition.py --samples 500
+```
+
+**Warning:** This is only for testing. Always rebuild the container properly before committing changes!
+
+---
+
 ## Recent Changes Log
+
+### 2025-11-12: Multi-hyphen Street Name Fix (99.4% Accuracy)
+- **Fixed critical bug** with merged multi-hyphen tokens (e.g., "Bertha-von-Suttner-Str.")
+- **Phase 5 improvements** to gazetteer scanner:
+  - Added sentence context trimming to prevent over-greedy scanning
+  - Trim leading "in/bei/von/etc." + optional article ("der/den/dem/die/das")
+  - Added "wohnung" to stopwords list
+- **Result:** 99.4% accuracy (497/500) on test suite
+- **Remaining edge cases:** PLZ confusion, DDR-style street names
 
 ### 2025-11-12: Gazetteer Performance Optimization
 - Added pickle-based preprocessing for 200x faster startup

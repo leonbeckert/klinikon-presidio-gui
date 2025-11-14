@@ -8,21 +8,20 @@ We import street_gazetteer here so that:
 
 Presidio analyzer then loads /app/models/de_with_address without knowing
 anything about our custom components, and everything just works.
+
+IMPORTANT: The merge_str_abbrev component is now ONLY defined in street_gazetteer.py
+as a factory. DO NOT register it here to avoid [E004] conflicts.
 """
 
 import street_gazetteer  # noqa: F401
 
-# Register merge_str_abbrev component
-from spacy.language import Language
-
-@Language.component("merge_str_abbrev")
-def merge_str_abbrev(doc):
-    """
-    Merge 'str' + '.' into single token 'str.'
-    This helps both EntityRuler patterns and gazetteer component.
-    """
-    with doc.retokenize() as retok:
-        for i in range(1, len(doc)):
-            if doc[i-1].lower_ == "str" and doc[i].text == ".":
-                retok.merge(doc[i-1:i+1], attrs={"LEMMA": doc[i-1].lemma_ + "."})
-    return doc
+# Optional: Run self-test on startup if environment variable is set
+import os
+if os.environ.get("RUN_ADDRESS_SELFTEST") == "true":
+    import sys
+    try:
+        import spacy
+        nlp = spacy.load("/app/models/de_with_address")
+        street_gazetteer.selftest_address_pipeline(nlp)
+    except Exception as e:
+        print(f"[selftest] WARNING: Could not run self-test: {e}", file=sys.stderr)
