@@ -15,13 +15,16 @@ as a factory. DO NOT register it here to avoid [E004] conflicts.
 
 import street_gazetteer  # noqa: F401
 
-# Optional: Run self-test on startup if environment variable is set
+# Self-test: Run on startup in production to fail-fast if ADDRESS pipeline breaks
+# Set RUN_ADDRESS_SELFTEST=false to disable (e.g., for debugging)
 import os
-if os.environ.get("RUN_ADDRESS_SELFTEST") == "true":
+if os.environ.get("RUN_ADDRESS_SELFTEST", "true").lower() != "false":
     import sys
     try:
         import spacy
         nlp = spacy.load("/app/models/de_with_address")
         street_gazetteer.selftest_address_pipeline(nlp)
     except Exception as e:
-        print(f"[selftest] WARNING: Could not run self-test: {e}", file=sys.stderr)
+        # FAIL FAST: Self-test failure means ADDRESS pipeline is broken
+        print(f"[selftest] FATAL: ADDRESS pipeline self-test failed: {e}", file=sys.stderr)
+        sys.exit(1)  # Container will restart, alerting ops team

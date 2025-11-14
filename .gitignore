@@ -42,3 +42,9 @@ tests/output/
 # Sensitive data (falls versehentlich lokal erzeugt)
 patient-data/
 sensitive/
+
+# Development artifacts (organized repo cleanup)
+AI_NOTES/
+dev_tools/
+test_data/
+raw_data/

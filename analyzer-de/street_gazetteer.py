@@ -52,6 +52,9 @@ R_EMBEDDED_RANGE = re.compile(r"^[0-9]+[A-Za-z]?(?:[-/–—][0-9]+[A-Za-z]?)[.,
 R_LETTER         = re.compile(r"^[A-Za-z][.,;:!?]*$")                 # g, g.
 R_PLZ            = re.compile(r"^[0-9]{5}$")                 # 10115
 
+# Maximum window size for backward scan (increased from 9 to handle complex contexts)
+MAX_WINDOW = 12
+
 
 def _extend_number_range(doc, start_i: int) -> int:
     """
@@ -522,18 +525,21 @@ def create_street_gazetteer(nlp, name):
         """
         # DIAGNOSTIC: Log once per doc to verify component is running
         import sys
+        print(f"[gaz-COMPONENT-START] Processing doc: '{doc.text[:60]}'...", file=sys.stderr, flush=True)
         if not hasattr(doc._, "_gaz_probe"):
-            print(f"[gaz] STREET_NAMES={len(STREET_NAMES):,}", file=sys.stderr)
+            print(f"[gaz] STREET_NAMES={len(STREET_NAMES):,}", file=sys.stderr, flush=True)
             # Sanity check a few known streets
-            for probe in ["trift", "imborntal", "andenhaselwiesen", "breden"]:
+            for probe in ["trift", "imborntal", "andenhaselwiesen", "breden", "mühlenstraße"]:
                 in_set = probe in STREET_NAMES
-                print(f"[gaz] probe '{probe}' in set? {in_set}", file=sys.stderr)
+                print(f"[gaz] probe '{probe}' in set? {in_set}", file=sys.stderr, flush=True)
             doc._.set("_gaz_probe", True)
 
         # Write to span group instead of doc.ents to avoid NER conflicts
         gaz_addresses = []
         candidates = 0
         hits = 0
+
+        import sys  # Debug logging
 
         for i, tok in enumerate(doc):
             # Check if token is a potential house number (pure number, letter suffix, or embedded range)
@@ -546,6 +552,8 @@ def create_street_gazetteer(nlp, name):
             ):
                 continue
 
+            print(f"[gaz-debug] Found number token at i={i}: '{tok.text}' in text: {doc.text[:80]}", file=sys.stderr)
+
             # Look backwards for potential street name tokens
             # Skip punctuation immediately before the number (e.g., "Bahnhofstr. 42")
             j = i - 1
@@ -553,6 +561,7 @@ def create_street_gazetteer(nlp, name):
                 j -= 1
 
             if j < 0:
+                print(f"  [gaz-debug] Skipped: j < 0 (no tokens before number)", file=sys.stderr)
                 continue
 
             # Now look backwards for street-like tokens (title-cased, apostrophes, articles)
@@ -563,18 +572,30 @@ def create_street_gazetteer(nlp, name):
 
             start = j
             consecutive_lowercase = 0
-            # Phase 2: Widen window to 9 tokens for long multi-hyphen names
-            while start >= 0 and _is_street_token_like(doc[start]) and (i - start) <= 9:
+            scan_stopped_reason = None
+            # Use MAX_WINDOW for wider context (increased from 9)
+            while start >= 0 and _is_street_token_like(doc[start]) and (i - start) <= MAX_WINDOW:
                 # Track consecutive lowercase to prevent over-greedy scans
                 # Don't count connector words toward the limit
                 if doc[start].is_lower and doc[start].is_alpha and doc[start].lower_ not in connectors:
                     consecutive_lowercase += 1
                     if consecutive_lowercase >= 2:  # Stop if 2+ consecutive lowercase words
+                        scan_stopped_reason = "2+ consecutive lowercase"
                         break
                 else:
                     consecutive_lowercase = 0  # Reset on non-lowercase token or connector
                 start -= 1
+
+            if not scan_stopped_reason and start < 0:
+                scan_stopped_reason = "reached start of doc"
+            elif not scan_stopped_reason and not _is_street_token_like(doc[start]):
+                scan_stopped_reason = f"token not street-like: '{doc[start].text}'"
+            elif not scan_stopped_reason and (i - start) > MAX_WINDOW:
+                scan_stopped_reason = "exceeded MAX_WINDOW"
+
             start += 1
+            print(f"  [gaz-debug] Backward scan: j={j} '{doc[j].text}' → start={start} '{doc[start].text}' (reason: {scan_stopped_reason})", file=sys.stderr)
+            print(f"  [gaz-debug] Scan window: doc[{start}:{j+1}] = '{doc[start:j+1].text}'", file=sys.stderr)
 
             # G1/Phase 4: Handle Roman numerals intelligently
             # Roman numerals pattern: I, II, III, IV, V, VI, VII, VIII, IX, X, etc.
@@ -599,65 +620,51 @@ def create_street_gazetteer(nlp, name):
 
             candidates += 1
 
-            # Phase 5 FIXED: Dual-lookup to handle streets WITH/WITHOUT prepositions
-            # OpenPLZ includes streets like "An den Haselwiesen", "Im Borntal", "Am Ebshang"
-            # We need to try BOTH variants and prefer whichever exists in the gazetteer
+            # NEW: Left-trim search to find the best street boundary
+            # Instead of guessing which tokens are "sentence context" vs "street name",
+            # we progressively trim from the left until we find a substring in the gazetteer.
+            # This robustly handles:
+            # - "Der Patient wohnt in der Mühlenstraße 42." → finds "Mühlenstraße"
+            # - "Wohnanschrift Mühlenstraße 42, Berlin" → finds "Mühlenstraße"
+            # - "Am Markt 3" → finds "Am Markt" (if in gazetteer)
+            # - "Die Patientin lebt in Berlin in der Mühlenstraße 42." → finds "Mühlenstraße"
+
             orig_start = start
+            match_start = None
+            match_norm = None
 
-            # Candidate A: keep as-is (with possible prep/article)
-            street_tokens = doc[orig_start:j+1]
-            norm_with = normalize_street_name(street_tokens.text)
+            # Debug: Show what we're scanning
+            import sys
+            full_window = doc[orig_start:j+1].text
+            print(f"[gaz-debug] num='{tok.text}' full_window='{full_window}'", file=sys.stderr)
 
-            # Candidate B: trim if it looks like a sentence prep
-            # Include am/im/aufm etc. - dual lookup will try both with/without
-            trimmed_start = orig_start
-            sentence_preps = {
-                "in", "im",
-                "bei",
-                "von", "nahe", "unweit", "gegenüber", "neben",
-                "an", "am",
-                "auf", "aufm",
-                "vor", "vorm",
-                "hinter", "hinterm",
-                "unter", "unterm",
-                "zu", "zum", "zur",
-                "zwischen",
-            }
-            if orig_start <= j and doc[orig_start].lower_ in sentence_preps:
-                trimmed_start += 1
-                if trimmed_start <= j and doc[trimmed_start].lower_ in {"der", "den", "dem", "die", "das"}:
-                    trimmed_start += 1
+            # Try progressively shorter substrings from left to right
+            # Start with the full window [start:j+1], then [start+1:j+1], etc.
+            for s0 in range(orig_start, j + 1):
+                cand_tokens = doc[s0:j+1]
+                cand_text = cand_tokens.text
+                norm = normalize_street_name(cand_text)
+                in_gaz = norm in STREET_NAMES
+                print(f"  [gaz-debug] try s0={s0} text='{cand_text}' norm='{norm}' in_gaz={in_gaz}", file=sys.stderr)
 
-            street_tokens_trim = doc[trimmed_start:j+1] if trimmed_start <= j else None
-            norm_without = normalize_street_name(street_tokens_trim.text) if street_tokens_trim else ""
+                if in_gaz:
+                    # Found a match! Use this as the street name boundary
+                    match_start = s0
+                    match_norm = norm
+                    break  # First (longest) match wins
 
-            # Prefer exact gazetteer match (try with-prep first, then without, then "Alter")
-            if norm_with in STREET_NAMES:
-                start = orig_start
-                norm_street = norm_with
-            elif norm_without in STREET_NAMES:
-                start = trimmed_start
-                norm_street = norm_without
-            else:
-                # Try "Alter" prefix trimming as last resort (e.g., "Alter Postweg" → "Postweg")
-                if orig_start <= j and doc[orig_start].lower_ in {"alter", "alte", "altes", "alten"}:
-                    alt_start = orig_start + 1
-                    if alt_start <= j:
-                        street_tokens_alt = doc[alt_start:j+1]
-                        norm_alt = normalize_street_name(street_tokens_alt.text)
-                        if norm_alt in STREET_NAMES:
-                            start = alt_start
-                            norm_street = norm_alt
-                        else:
-                            continue  # No match found
-                    else:
-                        continue
-                else:
-                    # Neither form exists -> skip
-                    continue
+            if match_start is None:
+                # No substring in this window is a known street → skip candidate
+                print(f"  [gaz-debug] NO MATCH - skipping candidate", file=sys.stderr)
+                continue
 
-            # Safety: cap street span at 9 tokens max (matches scan window)
-            if (j - start + 1) > 9:
+            # Update start to the matched boundary
+            start = match_start
+            norm_street = match_norm
+            print(f"  [gaz-debug] ✓ MATCHED: chosen='{doc[start:j+1].text}' norm='{norm_street}'", file=sys.stderr)
+
+            # Safety: cap street span at MAX_WINDOW tokens max (matches scan window)
+            if (j - start + 1) > MAX_WINDOW:
                 continue
 
             hits += 1

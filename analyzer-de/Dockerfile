@@ -22,7 +22,8 @@ ENV PYTHONPATH=/app:$PYTHONPATH
 
 # 4) Copy build script and build custom model
 COPY build_de_address_model.py /app/build_de_address_model.py
-RUN python /app/build_de_address_model.py
+# Disable self-test during build (model doesn't exist yet)
+RUN RUN_ADDRESS_SELFTEST=false python /app/build_de_address_model.py
 
 # 5) Configs
 COPY analyzer-conf.yml     /app/conf/analyzer-conf.yml

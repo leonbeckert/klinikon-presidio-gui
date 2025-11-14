@@ -1,170 +1,208 @@
 # Claude Code Development Notes
 
+## 🚨 CRITICAL DOCKER RULES
+
+### Rule #1: ALWAYS Clean Up Before Starting
+```bash
+docker compose down  # MANDATORY before every "docker compose up"
+```
+**Why:** Prevents duplicate containers → RAM crashes on Mac
+
+### Rule #2: Code Changes REQUIRE Image Rebuild
+```bash
+# After editing any .py/.yml/.csv/.pkl file in analyzer-de/:
+docker compose down
+cd analyzer-de
+docker build --no-cache -t presidio-analyzer-de .
+cd ..
+docker compose up -d && sleep 15
+```
+**Why:** `docker compose up` uses OLD image - your changes are only on host filesystem
+
+### Rule #3: Use Correct Image Name
+**Common issue:** `docker build` creates wrong image name → `docker compose up` can't find it
+
+**Solution:** Use `docker compose build` instead:
+```bash
+docker compose down
+docker compose build --no-cache presidio-analyzer
+docker compose up -d && sleep 15
+```
+
+**OR** verify image name matches docker-compose.yaml:
+```bash
+docker images | grep presidio  # Check what exists
+docker compose config | grep image  # Check what compose expects
+```
+
+### Quick Reference
+
+| Task | Command |
+|------|---------|
+| Start containers | `docker compose down && docker compose up -d` |
+| Rebuild after code changes | `docker compose down && docker compose build --no-cache && docker compose up -d` |
+| Check containers running | `docker ps` (should see exactly 3) |
+| Check memory usage | `docker stats --no-stream` |
+| Emergency cleanup | `docker compose down -v --remove-orphans` |
+| View logs | `docker logs presidio-analyzer-de` |
+| Verify changes in container | `docker exec presidio-analyzer-de grep "your_change" /app/file.py` |
+
+**Files that require rebuild when changed:**
+- Any `.py` file in `analyzer-de/`
+- Config files (`.yml`)
+- Data files (`.csv`, `.pkl`)
+- `Dockerfile`
+
+**For detailed troubleshooting, see DOCKER_TROUBLESHOOTING.md**
+
+---
+
 ## Street Gazetteer Preprocessing
 
-### Overview
+### Quick Facts (Updated 2025-11-14)
+- **502K streets** from DE+AT (expanded from 422K)
+- Preprocessed pickle file: 8.5 MB, loads in 0.3s
+- **200x faster than CSV loading**
+- **95.2% recognition accuracy** (DE+AT combined)
 
-The German ADDRESS recognizer uses a gazetteer of 423K street names from OpenPLZ. To speed up startup time, we preprocess and cache the normalized street names as a pickle file.
+### Current Gazetteer Composition
+- **Germany:** ~430K streets (from OpenPLZ + DACH dataset)
+- **Austria:** ~72K streets (from DACH dataset)
+- **Switzerland:** Excluded (French/Italian, not supported)
+- **Filtered out:** 39,555 POIs/non-streets (hospitals, parks, trails, etc.)
 
-**Performance improvement:**
-- CSV normalization: ~60 seconds on startup
-- Pickle loading: ~0.3 seconds on startup
-- **200x faster!**
+### When to Rebuild streets_normalized.pkl
 
-### When to Rebuild the Pickle File
+Rebuild if you modify:
+1. Source data: `raw_data/str_DACH_normalized_cleaned.csv`
+2. `normalize_street_name()` function in `street_gazetteer.py`
+3. Inclusion/exclusion filters in `preprocess_expanded.py`
+4. Street suffix abbreviation tuples
 
-You MUST rebuild the preprocessed pickle file (`streets_normalized.pkl`) if you:
-
-1. **Update the street CSV** (`analyzer-de/data/streets.csv`)
-2. **Change the normalization logic** in `normalize_street_name()` function
-3. **Add/remove street suffix abbreviations** in the replacement tuples
-
-### How to Rebuild
-
-#### Option 1: Inside Docker Container (Recommended)
-
-```bash
-# 1. Ensure containers are running
-docker compose up -d
-
-# 2. Run preprocessing script
-docker exec presidio-analyzer-de python /app/preprocess_gazetteer_standalone.py
-
-# 3. Copy the generated pickle file to local machine
-docker cp presidio-analyzer-de:/app/data/streets_normalized.pkl analyzer-de/data/streets_normalized.pkl
-
-# 4. Restart containers to use the new pickle file
-docker compose restart presidio-analyzer-de
-```
-
-#### Option 2: On Local Machine
+### How to Rebuild (Updated Process)
 
 ```bash
-cd analyzer-de
-python preprocess_gazetteer_standalone.py
+# 1. Run preprocessing script (on host, not in Docker)
+python3 preprocess_expanded.py
+# Output: analyzer-de/data/streets_normalized_expanded.pkl
+
+# 2. Replace production gazetteer
+cp analyzer-de/data/streets_normalized_expanded.pkl \
+   analyzer-de/data/streets_normalized.pkl
+
+# 3. Rebuild Docker container
+docker compose down
+docker compose build --no-cache presidio-analyzer
+docker compose up -d && sleep 15
+
+# 4. Verify gazetteer loaded
+docker logs presidio-analyzer-de 2>&1 | grep "Loaded.*street"
+# Should show: "Loaded 502,236 street names (preprocessed)."
+
+# 5. Run tests
+python3 dev_tools/tests/test_dach_recognition_simple.py --samples 1000
+python3 dev_tools/tests/test_false_positives.py
+docker compose down && docker compose up -d
+
+# Or locally
+cd analyzer-de && python preprocess_gazetteer_standalone.py
 ```
 
-This generates `analyzer-de/data/streets_normalized.pkl` locally.
-
-### Files Involved
-
-- **`analyzer-de/data/streets.csv`** - Source data (423K German street names from OpenPLZ)
-- **`analyzer-de/data/streets_normalized.pkl`** - Preprocessed pickle file (7.2 MB, loaded at startup)
-- **`analyzer-de/preprocess_gazetteer_standalone.py`** - Script to generate the pickle file
-- **`analyzer-de/street_gazetteer.py`** - Main gazetteer module (automatically loads pickle if available, falls back to CSV)
-
-### Verification
-
-After rebuilding, check the analyzer logs on startup:
+### Verify
 
 ```bash
 docker logs presidio-analyzer-de --tail 10
 ```
 
-You should see:
+Should see:
 ```
-[street_gazetteer] Loading preprocessed streets from /app/data/streets_normalized.pkl ...
 [street_gazetteer] Loaded 422,721 street names (preprocessed).
 ```
 
-If the pickle file is missing or outdated, you'll see:
-```
-[street_gazetteer] Preprocessed file not found, loading from CSV ...
-[street_gazetteer] (Run 'python preprocess_gazetteer.py' to speed up future loads)
-```
+### Important Notes
 
-### Normalization Logic (Phase 1 Baseline)
-
-The current normalization achieves **94.6% accuracy** by:
-
-1. **Tuple-based replacements** for German street suffix abbreviations:
-   - `Str.` → `Straße`
-   - `Wg.` → `Weg`
-   - `Pl.` → `Platz`
-   - `Al.` → `Allee`
-   - And 40+ other variants
-
-2. **Targeted regex** for hyphenated streets:
-   - `-Str.` → `-Straße` (with dot, to avoid double-expansion bug)
-
-3. **Unicode normalization**:
-   - Fancy dashes/apostrophes → ASCII equivalents
-   - NFC normalization + casefold
-
-**IMPORTANT:** The two problematic patterns are intentionally **REMOVED** to prevent the "strasseasse" bug:
-- ~~`("-Str", "-Straße")`~~ (would match inside "-Straße" → "-Straßeaße")
-- ~~`("-str", "-straße")`~~ (would match inside "-straße" → "-straßeaße")
-
-### Git Tracking
-
-The pickle file (`streets_normalized.pkl`) should be:
-- **Committed to git** (so other developers don't need to regenerate)
-- **Regenerated** only when the source data or normalization logic changes
-- **Updated** in pull requests that modify the gazetteer
+- **Commit** `streets_normalized.pkl` to git (so others don't need to regenerate)
+- Current normalization: **94.6% accuracy** (Phase 1 baseline)
+- Removed `-Str`/`-str` patterns (caused "strasseasse" bug)
 
 ---
 
-## Docker Container Rebuild Process
+## Repository Organization
 
-### When to Rebuild
-
-You MUST rebuild the Docker container whenever you modify:
-- `analyzer-de/street_gazetteer.py` (gazetteer scanner logic)
-- `analyzer-de/build_de_address_model.py` (EntityRuler patterns)
-- `analyzer-de/sitecustomize.py` (custom Python initialization)
-- Configuration files (analyzer-conf.yml, nlp-config-de.yml, recognizers-de.yml)
-
-### Rebuild Commands
-
-```bash
-# From the analyzer-de directory:
-cd analyzer-de
-docker build --no-cache -t presidio-analyzer-de .
-
-# Or use the faster cached build (only if dependencies haven't changed):
-docker build -t presidio-analyzer-de .
-
-# Then restart services from project root:
-cd ..
-docker compose down
-docker compose up -d
-
-# Wait for analyzer to be ready (~15 seconds):
-sleep 15
+```
+PresidioGUI/
+├── analyzer-de/              # Docker analyzer service (TRACKED)
+│   ├── data/
+│   │   ├── streets.csv       # ⚠️ CRITICAL - Docker needs this
+│   │   └── streets_normalized.pkl  # ⚠️ CRITICAL - Docker needs this
+│   ├── street_gazetteer.py
+│   └── Dockerfile
+├── klinikon-presidio-ui/     # Docker UI service (TRACKED)
+├── AI_NOTES/                 # Analysis docs (GITIGNORED)
+├── dev_tools/                # Dev/debug scripts (GITIGNORED)
+│   ├── debug/
+│   ├── scripts/
+│   └── tests/
+├── test_data/                # Test results (GITIGNORED)
+├── raw_data/                 # Large source files (GITIGNORED)
+├── CLAUDE.md                 # This file
+└── DOCKER_TROUBLESHOOTING.md # Detailed Docker help
 ```
 
-### Quick Test During Development
+**Never move/delete** `analyzer-de/data/streets.csv` or `streets_normalized.pkl` - Docker container depends on them!
 
-For rapid iteration without full rebuilds, you can copy modified files directly to the running container:
+---
 
+## Development Workflow
+
+### Making Code Changes
+
+1. Edit files in `analyzer-de/` on host
+2. Rebuild image: `docker compose build --no-cache presidio-analyzer`
+3. Restart: `docker compose down && docker compose up -d`
+4. Verify: `docker exec presidio-analyzer-de grep "your_change" /app/your_file.py`
+5. Test: Run scripts from `dev_tools/tests/`
+
+### Quick Test (No Rebuild)
+
+For rapid iteration ONLY (not for commits):
 ```bash
-# Copy updated file
 docker cp analyzer-de/street_gazetteer.py presidio-analyzer-de:/app/street_gazetteer.py
-
-# Restart analyzer to reload the module
 docker restart presidio-analyzer-de && sleep 15
-
-# Test your changes
-python3 test_street_recognition.py --samples 500
 ```
 
-**Warning:** This is only for testing. Always rebuild the container properly before committing changes!
+**⚠️ Changes lost on container restart! Always rebuild before committing.**
+
+### Running Tests
+
+```bash
+# Tests auto-detect project root, run from anywhere:
+python dev_tools/tests/test_street_recognition.py --samples 500
+python dev_tools/tests/test_false_positives.py
+```
 
 ---
 
-## Recent Changes Log
+## Resource Limits (16GB Mac)
 
-### 2025-11-12: Multi-hyphen Street Name Fix (99.4% Accuracy)
-- **Fixed critical bug** with merged multi-hyphen tokens (e.g., "Bertha-von-Suttner-Str.")
-- **Phase 5 improvements** to gazetteer scanner:
-  - Added sentence context trimming to prevent over-greedy scanning
-  - Trim leading "in/bei/von/etc." + optional article ("der/den/dem/die/das")
-  - Added "wohnung" to stopwords list
-- **Result:** 99.4% accuracy (497/500) on test suite
-- **Remaining edge cases:** PLZ confusion, DDR-style street names
+- `presidio-analyzer-de`: 2GB max
+- `presidio-anonymizer`: 512MB max
+- `klinikon-presidio-ui`: 512MB max
+- **Total**: ~3GB
 
-### 2025-11-12: Gazetteer Performance Optimization
-- Added pickle-based preprocessing for 200x faster startup
-- Reverted to Phase 1 tuple-based normalization (94.6% baseline)
-- Removed problematic `-Str`/`-str` patterns that caused double-expansion
-- Added targeted regex for `-Str.` (with dot) in hyphenated contexts
+If Mac freezes: `docker compose down -v --remove-orphans`
+
+---
+
+## Recent Achievements
+
+**99.4% ADDRESS Recognition Accuracy** (497/500 test cases)
+
+### 2025-11-12: Multi-hyphen Street Name Fix
+- Fixed merged multi-hyphen tokens (e.g., "Bertha-von-Suttner-Str.")
+- Added sentence context trimming
+- Improved stopword filtering
+
+### 2025-11-12: Performance Optimization
+- Pickle preprocessing: 200x faster startup
+- Optimized normalization (94.6% baseline)
