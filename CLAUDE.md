@@ -57,6 +57,55 @@ docker compose config | grep image  # Check what compose expects
 
 ---
 
+## 🏠 Local vs Production Deployment
+
+**Two docker-compose files:**
+
+### `docker-compose.local.yaml` - Local Development (Mac 16GB)
+```bash
+# Use for local development with limited resources
+docker compose -f docker-compose.local.yaml down
+docker compose -f docker-compose.local.yaml up -d
+```
+
+**Resource limits:**
+- `presidio-analyzer-de`: 8GB RAM / 4 CPU
+- `presidio-anonymizer`: 512MB RAM / 0.5 CPU
+- `klinikon-presidio-ui`: 512MB RAM / 0.5 CPU
+- **Total**: ~9GB RAM
+
+**Use when:**
+- Developing on Mac/laptop with limited resources
+- Testing changes locally before deployment
+- Single/small batch anonymization
+
+### `docker-compose.yaml` - Production Deployment (Dedicated Server)
+```bash
+# Default file - used on production server
+docker compose down
+docker compose up -d
+```
+
+**Resource limits:**
+- `presidio-analyzer-de`: 16GB RAM / 8 CPU
+- `presidio-anonymizer`: 512MB RAM / 0.5 CPU
+- `klinikon-presidio-ui`: 512MB RAM / 0.5 CPU
+- **Total**: ~17GB RAM
+
+**Server specs:** i5-13500 (14 cores), 64GB RAM, 2x512GB NVMe RAID1
+
+**Use when:**
+- Deploying to production server
+- High-concurrency batch processing (100+ concurrent requests)
+- Processing large batches (93+ texts simultaneously)
+
+**Why separate configs?**
+- Production config (16GB/8CPU) would exhaust local Mac resources
+- Local config (2GB/1.5CPU) would cause PoolTimeout errors under production load
+- Traefik/coolify labels only needed in production
+
+---
+
 ## Street Gazetteer Preprocessing
 
 ### Quick Facts (Updated 2025-11-14)
@@ -183,17 +232,6 @@ python dev_tools/tests/test_false_positives.py
 # Test concatenated address recognition (NEW - 2025-11-17)
 python dev_tools/tests/test_concatenated_addresses.py
 ```
-
----
-
-## Resource Limits (16GB Mac)
-
-- `presidio-analyzer-de`: 2GB max
-- `presidio-anonymizer`: 512MB max
-- `klinikon-presidio-ui`: 512MB max
-- **Total**: ~3GB
-
-If Mac freezes: `docker compose down -v --remove-orphans`
 
 ---
 
