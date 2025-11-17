@@ -57,13 +57,32 @@ docker compose config | grep image  # Check what compose expects
 
 ---
 
-## 🏠 Local vs Production Deployment
+## 🏠 Deployment Configurations
 
-**Two docker-compose files:**
+**Three docker-compose files for different environments:**
 
-### `docker-compose.local.yaml` - Local Development (Mac 16GB)
+### `docker-compose.dev.yaml` - Development (Minimal Resources)
 ```bash
-# Use for local development with limited resources
+# Lightweight development with minimal resource usage
+docker compose -f docker-compose.dev.yaml down
+docker compose -f docker-compose.dev.yaml up -d
+```
+
+**Resource limits:**
+- `presidio-analyzer-de`: 4GB RAM / 2 CPU
+- `presidio-anonymizer`: 512MB RAM / 0.5 CPU
+- `klinikon-presidio-ui`: 512MB RAM / 0.5 CPU
+- **Total**: ~5GB RAM
+
+**Use when:**
+- Lightweight development work
+- Testing small code changes
+- Limited system resources available
+- Single text anonymization testing
+
+### `docker-compose.local.yaml` - Local/On-Prem (Mac 16GB)
+```bash
+# Use for local development with moderate resources
 docker compose -f docker-compose.local.yaml down
 docker compose -f docker-compose.local.yaml up -d
 ```
@@ -75,11 +94,11 @@ docker compose -f docker-compose.local.yaml up -d
 - **Total**: ~9GB RAM
 
 **Use when:**
-- Developing on Mac/laptop with limited resources
-- Testing changes locally before deployment
-- Single/small batch anonymization
+- On-premises deployment with limited resources
+- Testing batch processing locally
+- Small to medium batch anonymization (10-50 texts)
 
-### `docker-compose.yaml` - Production Deployment (Dedicated Server)
+### `docker-compose.yaml` - Production (Dedicated Server)
 ```bash
 # Default file - used on production server
 docker compose down
@@ -95,14 +114,15 @@ docker compose up -d
 **Server specs:** i5-13500 (14 cores), 64GB RAM, 2x512GB NVMe RAID1
 
 **Use when:**
-- Deploying to production server
+- Production server deployment
 - High-concurrency batch processing (100+ concurrent requests)
 - Processing large batches (93+ texts simultaneously)
 
-**Why separate configs?**
-- Production config (16GB/8CPU) would exhaust local Mac resources
-- Local config (2GB/1.5CPU) would cause PoolTimeout errors under production load
-- Traefik/coolify labels only needed in production
+**Why three separate configs?**
+- **Dev (4GB/2CPU)**: Minimal footprint for quick testing
+- **Local/On-Prem (8GB/4CPU)**: Moderate resources for local batch processing
+- **Production (16GB/8CPU)**: Full performance for high-concurrency workloads
+- Production includes Traefik/coolify labels for reverse proxy
 
 ---
 
@@ -187,7 +207,7 @@ PresidioGUI/
 │   ├── street_gazetteer.py
 │   └── Dockerfile
 ├── klinikon-presidio-ui/     # Docker UI service (TRACKED)
-├── AI_NOTES/                 # Analysis docs (GITIGNORED)
+├── AI_NOTES/                 # Agent-created plans & analysis (GITIGNORED)
 ├── dev_tools/                # Dev/debug scripts (GITIGNORED)
 │   ├── debug/
 │   ├── scripts/
@@ -197,6 +217,20 @@ PresidioGUI/
 ├── CLAUDE.md                 # This file
 └── DOCKER_TROUBLESHOOTING.md # Detailed Docker help
 ```
+
+### File Organization Rules
+
+**AI_NOTES/ - For Agent-Created Documents**
+- **ALL** analysis reports, implementation plans, and strategy documents created by Claude or other AI agents MUST go in `AI_NOTES/`
+- Examples: `*_PLAN.md`, `*_ANALYSIS.md`, `*_REPORT.md`, `*_STRATEGY.md`, `*_SUMMARY.md`
+- This keeps the root directory clean and makes it clear which docs are AI-generated vs human-authored
+- These files are gitignored and won't clutter version control
+
+**Root Directory - For Human-Authored Project Documentation Only**
+- `CLAUDE.md` - Development instructions for Claude Code
+- `README.md` - Project overview for humans
+- `DOCKER_TROUBLESHOOTING.md` - Human-curated troubleshooting guide
+- User-written documentation and guides only
 
 **Never move/delete** `analyzer-de/data/streets.csv` or `streets_normalized.pkl` - Docker container depends on them!
 
