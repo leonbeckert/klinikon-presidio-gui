@@ -2,18 +2,19 @@
 """
 Build a custom spaCy model with ADDRESS EntityRuler + OpenPLZ street gazetteer.
 This script loads the base de_core_news_md model and adds:
-1. Tokenization fix for "str." abbreviations
-2. EntityRuler patterns for common German address formats
-3. Street gazetteer component using OpenPLZ street names for validation
-4. Conflict resolver component to handle entity precedence (ADDRESS > PER/LOC/ORG)
+1. Split concatenated addresses (Graseggerstraße105 → Graseggerstraße + 105)
+2. Tokenization fix for "str." abbreviations
+3. EntityRuler patterns for common German address formats
+4. Street gazetteer component using OpenPLZ street names for validation
+5. Conflict resolver component to handle entity precedence (ADDRESS > PER/LOC/ORG)
 
-Pipeline order: merge_str_abbrev → [default] → entity_ruler → ner → street_gazetteer → address_conflict_resolver
+Pipeline order: split_concatenated_addresses → merge_str_abbrev → [default] → entity_ruler → ner → street_gazetteer → address_conflict_resolver
 """
 import spacy
 from spacy.language import Language
 from pathlib import Path
 
-# Importing street_gazetteer ensures the component is registered
+# Importing street_gazetteer ensures all custom components are registered
 import street_gazetteer  # noqa: F401
 
 BASE_MODEL = "de_core_news_md"
@@ -30,11 +31,17 @@ abbrevs = ["Str.", "str.", "Allee.", "allee.", "St.", "st."]
 for abbrev in abbrevs:
     nlp.tokenizer.add_special_case(abbrev, [{ORTH: abbrev}])
 
+# CRITICAL: Add split_concatenated_addresses FIRST
+# This handles addresses without spacing like "Graseggerstraße105"
+if "split_concatenated_addresses" not in nlp.pipe_names:
+    print("[build] Adding split_concatenated_addresses component...")
+    nlp.add_pipe("split_concatenated_addresses", first=True)
+
 # merge_str_abbrev component is now defined in street_gazetteer.py (imported above)
-# Add it to pipeline FIRST (before any other components)
+# Add it AFTER split_concatenated_addresses
 if "merge_str_abbrev" not in nlp.pipe_names:
     print("[build] Adding merge_str_abbrev component...")
-    nlp.add_pipe("merge_str_abbrev", first=True)
+    nlp.add_pipe("merge_str_abbrev", after="split_concatenated_addresses")
 
 # Insert EntityRuler before NER (patterns work better on raw text)
 # The conflict resolver will handle precedence later

@@ -15,6 +15,87 @@ if not Doc.has_extension("_gaz_probe"):
 STREETS_CSV_PATH = Path("/app/data/streets.csv")
 
 
+@Language.factory("split_concatenated_addresses")
+def create_split_concatenated_addresses(nlp, name):
+    """
+    Factory for splitting concatenated street+number tokens.
+
+    Handles addresses without spacing like "Graseggerstraße105" → "Graseggerstraße" + "105".
+    This component MUST run BEFORE merge_str_abbrev and other NLP components.
+    """
+    import sys
+
+    # Comprehensive German street suffix pattern (matches Phase 4 expanded list)
+    # Note: Order matters - longer suffixes first to avoid partial matches
+    STREET_SUFFIXES = (
+        "straße", "strasse", "str",
+        "allee", "weg", "platz", "gasse", "ring", "ufer", "damm", "hof",
+        "chaussee", "pfad", "markt", "steig", "stieg", "garten", "plan",
+        "redder", "wiesen", "flur", "feld", "berg", "see", "tal", "blick",
+        "park", "kamp", "kamps", "gang", "twiete", "twieten", "terrasse",
+        "terrassen", "siedlung", "winkel", "äcker", "acker", "wald", "brink",
+        "rain", "grund", "höhe", "hang", "anger", "bruch", "heide", "holz",
+        "brücke", "bruecke", "tor", "gässchen", "gaesschen", "gässle", "gaessle",
+        "steige", "lohe", "höfe", "hoefe", "reihe", "umgehung", "ortsumfahrung",
+        "bahnbogen", "hügel", "huegel", "wegle"
+    )
+
+    # Build regex pattern: <street_suffix><number><optional_letter/range>
+    suffix_pattern = "|".join(re.escape(s) for s in STREET_SUFFIXES)
+    # Match: anything ending with suffix + immediate digits + optional letter/range
+    CONCAT_PATTERN = re.compile(
+        rf'^(.+(?:{suffix_pattern}))([0-9]+[a-zA-Z]?(?:[-/–—][0-9]+[a-zA-Z]?)?)$',
+        re.IGNORECASE | re.UNICODE
+    )
+
+    def split_concatenated_addresses(doc):
+        """
+        Split tokens like "Graseggerstraße105" into "Graseggerstraße" + "105".
+
+        Examples:
+        - Graseggerstraße105 → Graseggerstraße + 105
+        - Hauptstr42b → Hauptstr + 42b
+        - Berlinerweg12-14 → Berlinerweg + 12-14
+
+        Medical codes like F32.1, B12, HbA1c are NOT split (no street suffix).
+        """
+        splits = []
+
+        with doc.retokenize() as retok:
+            for i, tok in enumerate(doc):
+                # Skip very short tokens (medical codes, etc.)
+                if len(tok.text) < 6:  # Minimum: "Str105"
+                    continue
+
+                # Try to match concatenated pattern
+                match = CONCAT_PATTERN.match(tok.text)
+                if match:
+                    street_part = match.group(1)
+                    number_part = match.group(2)
+
+                    # Safety: ensure we actually have a street suffix at the end of street_part
+                    street_lower = street_part.lower()
+                    has_suffix = any(street_lower.endswith(suffix) for suffix in STREET_SUFFIXES)
+
+                    if has_suffix and street_part and number_part:
+                        splits.append(f"{tok.text} → {street_part} + {number_part}")
+
+                        # Split the token into two parts
+                        # heads parameter: both parts depend on original token's head
+                        retok.split(
+                            tok,
+                            [street_part, number_part],
+                            heads=[(tok, 1), (tok, 0)]  # number depends on street
+                        )
+
+        if splits:
+            print(f"[split_concatenated] Split {len(splits)} tokens: {splits[:5]}", file=sys.stderr)
+
+        return doc
+
+    return split_concatenated_addresses
+
+
 @Language.factory("merge_str_abbrev")
 def create_merge_str_abbrev(nlp, name):
     """Factory for creating merge_str_abbrev component."""

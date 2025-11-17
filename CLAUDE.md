@@ -179,6 +179,9 @@ docker restart presidio-analyzer-de && sleep 15
 # Tests auto-detect project root, run from anywhere:
 python dev_tools/tests/test_street_recognition.py --samples 500
 python dev_tools/tests/test_false_positives.py
+
+# Test concatenated address recognition (NEW - 2025-11-17)
+python dev_tools/tests/test_concatenated_addresses.py
 ```
 
 ---
@@ -197,6 +200,16 @@ If Mac freezes: `docker compose down -v --remove-orphans`
 ## Recent Achievements
 
 **99.4% ADDRESS Recognition Accuracy** (497/500 test cases)
+
+### 2025-11-17: Concatenated Address Recognition 🎯
+- **NEW**: Handles addresses without spacing (e.g., "Graseggerstraße105")
+- Added `split_concatenated_addresses` pipeline component (runs FIRST in pipeline)
+- Splits concatenated tokens: "Hauptstraße42b" → "Hauptstraße" + "42b"
+- **100% test success rate** (34/34 test cases passing)
+- Preserves medical code integrity (F32.1, B12, HbA1c not affected)
+- Supports all German street suffixes (60+ variants)
+- Test file: `dev_tools/tests/test_concatenated_addresses.py`
+- **Pipeline order**: `split_concatenated_addresses` → `merge_str_abbrev` → ... → `street_gazetteer`
 
 ### 2025-11-12: Multi-hyphen Street Name Fix
 - Fixed merged multi-hyphen tokens (e.g., "Bertha-von-Suttner-Str.")
