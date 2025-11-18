@@ -1099,7 +1099,11 @@ def create_address_precision_filter(nlp, name):
 
         Keeps entities that:
         1. Don't match false positive patterns
-        2. Have street suffixes OR overlap with gazetteer confirmations
+        2. Overlap with gazetteer confirmations (ALWAYS trusted - fixes "Alter/Alte" issue)
+        3. Have street suffixes (for non-gazetteer entities)
+
+        FIX: Prioritize gazetteer validation to handle streets with unusual POS tags
+        (e.g., "Alter Kieler Weg" where "Alter" is tagged as ADJ instead of PROPN)
         """
         kept = []
         gaz_hits = list(doc.spans.get("gaz_address", []))
@@ -1111,18 +1115,24 @@ def create_address_precision_filter(nlp, name):
 
             span_text = ent.text
 
-            # Rule 1: Reject classic non-address contexts
-            if looks_like_non_address(span_text):
-                continue
-
-            # Rule 2: Require suffix OR gazetteer confirmation
-            has_indicator = has_suffix(doc, ent)
+            # Rule 1: ALWAYS trust gazetteer-validated addresses FIRST (they're confirmed real streets)
+            # This fixes "Alter/Alte" prefix streets that would otherwise match false positive patterns
+            # (e.g., "Alter" appears in AGE_WORDS but is also a valid street prefix meaning "Old")
             overlaps_gaz = any(
                 not (ent.end_char <= g.start_char or g.end_char <= ent.start_char)
                 for g in gaz_hits
             )
+            if overlaps_gaz:
+                kept.append(ent)
+                continue
 
-            if not (has_indicator or overlaps_gaz):
+            # Rule 2: Reject classic non-address contexts (only for non-gazetteer entities)
+            if looks_like_non_address(span_text):
+                continue
+
+            # Rule 3: For non-gazetteer entities, require street suffix as validation
+            has_indicator = has_suffix(doc, ent)
+            if not has_indicator:
                 continue
 
             kept.append(ent)
