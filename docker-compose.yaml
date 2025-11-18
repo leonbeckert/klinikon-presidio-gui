@@ -19,11 +19,11 @@ services:
     deploy:
       resources:
         limits:
-          memory: 16G
-          cpus: '8.0'
+          memory: 8G
+          cpus: '4.0'
         reservations:
-          memory: 4G
-          cpus: '2.0'
+          memory: 2G
+          cpus: '1.0'
     networks:
       - presidio-network
       - coolify

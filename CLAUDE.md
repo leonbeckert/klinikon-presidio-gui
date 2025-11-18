@@ -98,7 +98,7 @@ docker compose -f docker-compose.local.yaml up -d
 - Testing batch processing locally
 - Small to medium batch anonymization (10-50 texts)
 
-### `docker-compose.yaml` - Production (Dedicated Server)
+### `docker-compose.yaml` - Production (Cloud Server)
 ```bash
 # Default file - used on production server
 docker compose down
@@ -106,22 +106,22 @@ docker compose up -d
 ```
 
 **Resource limits:**
-- `presidio-analyzer-de`: 16GB RAM / 8 CPU
+- `presidio-analyzer-de`: 8GB RAM / 4 CPU
 - `presidio-anonymizer`: 512MB RAM / 0.5 CPU
 - `klinikon-presidio-ui`: 512MB RAM / 0.5 CPU
-- **Total**: ~17GB RAM
+- **Total**: ~9GB RAM
 
-**Server specs:** i5-13500 (14 cores), 64GB RAM, 2x512GB NVMe RAID1
+**Server specs:** 4 CPU cores (Coolify deployment)
 
 **Use when:**
-- Production server deployment
-- High-concurrency batch processing (100+ concurrent requests)
-- Processing large batches (93+ texts simultaneously)
+- Production cloud deployment
+- Moderate batch processing (50-100 texts)
+- Standard production workloads
 
 **Why three separate configs?**
 - **Dev (4GB/2CPU)**: Minimal footprint for quick testing
 - **Local/On-Prem (8GB/4CPU)**: Moderate resources for local batch processing
-- **Production (16GB/8CPU)**: Full performance for high-concurrency workloads
+- **Production (8GB/4CPU)**: Cloud deployment with Traefik/Coolify integration
 - Production includes Traefik/coolify labels for reverse proxy
 
 ---
