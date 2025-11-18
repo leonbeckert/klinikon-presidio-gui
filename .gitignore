@@ -38,6 +38,7 @@ docker-compose.override.yaml
 # Test outputs
 tests/output/
 *.test.txt
+*test_results*.json
 
 # Sensitive data (falls versehentlich lokal erzeugt)
 patient-data/

@@ -14,6 +14,20 @@ if not Doc.has_extension("_gaz_probe"):
 
 STREETS_CSV_PATH = Path("/app/data/streets.csv")
 
+# Quantity indicators used for false positive filtering
+# Examples: "etwa 2", "ca. 90", "zwischen 40", "bis zu 16", "über 8", "ab 60", "für 10"
+QUANTITY_INDICATORS = {
+    "ca", "ca.", "cirka", "zirka",
+    "etwa", "ungefähr", "rund",
+    "bis", "zu",
+    "über", "ueber",
+    "zwischen",
+    "ab",
+    "für", "fuer",
+    "von",
+    "mindestens", "höchstens", "maximal", "minimal"
+}
+
 
 @Language.factory("split_concatenated_addresses")
 def create_split_concatenated_addresses(nlp, name):
@@ -463,17 +477,7 @@ def _is_likely_false_positive(doc, span_start: int, span_end: int, number_token_
 
     # Rule 2: Check if number is preceded within 2 tokens by quantity indicator
     # Examples: "etwa 2", "ca. 90", "zwischen 40", "bis zu 16", "über 8", "ab 60", "für 10"
-    QUANTITY_INDICATORS = {
-        "ca", "ca.", "cirka", "zirka",
-        "etwa", "ungefähr", "rund",
-        "bis", "zu",
-        "über", "ueber",
-        "zwischen",
-        "ab",
-        "für", "fuer",
-        "von",
-        "mindestens", "höchstens", "maximal", "minimal"
-    }
+    # (QUANTITY_INDICATORS is defined at module level)
 
     # Look back up to 2 tokens before the number
     for offset in range(1, 3):
@@ -742,6 +746,23 @@ def create_street_gazetteer(nlp, name):
             # Update start to the matched boundary
             start = match_start
             norm_street = match_norm
+
+            # FIX (2025-11-18): Reject single-letter "streets" (a-z)
+            # These are artifacts in the gazetteer and cause false positives like "T 2015" from "Mertens T 2015"
+            if len(norm_street) == 1 and norm_street.isalpha():
+                print(f"  [gaz-debug] REJECTED: single-letter street '{norm_street}' (gazetteer artifact)", file=sys.stderr)
+                continue
+
+            # FIX (2025-11-18): Reject 2-3 letter abbreviations (likely medical codes, not streets)
+            # Examples: "ED" (Erstdiagnose), "EM", "CT", "MRT"
+            # Real 2-letter streets would be rare and should have context (e.g., "Am K 12")
+            if len(norm_street) <= 3 and norm_street.isalpha() and norm_street.islower():
+                # Check if original text is uppercase (medical abbreviation pattern)
+                original_text = doc[start:j+1].text
+                if original_text.isupper() and len(original_text) <= 3:
+                    print(f"  [gaz-debug] REJECTED: medical abbreviation '{original_text}' (likely not a street)", file=sys.stderr)
+                    continue
+
             print(f"  [gaz-debug] ✓ MATCHED: chosen='{doc[start:j+1].text}' norm='{norm_street}'", file=sys.stderr)
 
             # Safety: cap street span at MAX_WINDOW tokens max (matches scan window)
@@ -758,7 +779,21 @@ def create_street_gazetteer(nlp, name):
             # Check BEFORE creating the span to avoid false positives like:
             # - "etwa 2 von 10.000", "zwischen 40 %", "für 10 Tage"
             # - "ab 60 Jahren", "Pro Jahr erkranken etwa 2"
-            if _is_likely_false_positive(doc, span_start, span_end, i):
+            #
+            # CRITICAL FIX (2025-11-18): Skip false positive filter for gazetteer-validated streets
+            # If the street is in our 627K+ street database, trust it over heuristic filters.
+            # This fixes "Rudolf von Eichthal-Straße" being rejected due to "von" in QUANTITY_INDICATORS.
+            # The filter is still applied to non-validated pattern matches.
+            #
+            # EXCEPTION (2025-11-18): Even if in gazetteer, still filter quantity indicators
+            # Streets like "Über" exist but "über 8" in medical context should still be filtered
+            gazetteer_validated = norm_street in STREET_NAMES  # Already validated in left-trim search
+            is_quantity_indicator = norm_street in QUANTITY_INDICATORS
+
+            # Apply filter if: (1) not in gazetteer, OR (2) is a quantity indicator
+            should_filter = not gazetteer_validated or is_quantity_indicator
+
+            if should_filter and _is_likely_false_positive(doc, span_start, span_end, i):
                 continue  # Skip this candidate - likely false positive
 
             # Ensure ADDRESS label exists in vocab
@@ -1024,6 +1059,8 @@ def create_address_precision_filter(nlp, name):
     PARA_RE   = re.compile(r"\babs\.\s*\d+\b", re.I)
     PARA_SEC  = re.compile(r"§\s*\d+\b")
     ED_PATTERN = re.compile(r"\bED\s+(?:\d{1,2}/)?(19|20)\d{2}\b", re.I)  # Medical: "ED 2013", "ED 11/2014"
+    CITATION_RE = re.compile(r"\b[A-ZÄÖÜ][a-zäöüß]+\s+[A-Z]\s+(19|20)\d{2}\b")  # Author citations: "Mertens T 2015"
+    ABBREV_YEAR_RE = re.compile(r"^[A-ZÄÖÜ]{1,3}\s+(19|20)\d{2}$")  # Bare abbreviation + year: "ED 2013"
 
     # Street suffix set (mirrors _is_street_token_like)
     SUFFIX = {"straße","str.","str","weg","platz","allee","gasse","ring","ufer",
@@ -1053,12 +1090,28 @@ def create_address_precision_filter(nlp, name):
         # Check for suffix pattern at end
         return bool(re.search(r"(straße|str\.|str|weg|platz|allee|gasse|ring|ufer|damm|hof|chaussee|pfad|markt|steig|stieg|garten|gang|twiete|terrasse|siedlung|winkel|wald|brink|rain|grund|höhe|anger|bruch|heide|holz|brücke|bruecke|tor|reihe|umgehung|ortsumfahrung|bahnbogen|hügel|huegel|wegle)\.?$", text))
 
-    def looks_like_non_address(text):
-        """Check if text matches common false positive patterns."""
+    def looks_like_non_address(text, doc=None, span=None):
+        """
+        Check if text matches common false positive patterns.
+
+        Args:
+            text: The span text to check
+            doc: spaCy Doc object (optional, for context checking)
+            span: The entity span (optional, for context checking)
+        """
         t = text.casefold()
 
         # Medical 'Erstdiagnose' patterns (e.g., "ED 2013", "ED 11/2014")
         if ED_PATTERN.search(text):  # use original text to preserve case
+            return True
+
+        # Bare abbreviation + year (e.g., "ED 2013", "EM 2011")
+        # Real addresses would have street names, not just abbreviation + year
+        if ABBREV_YEAR_RE.match(text):
+            return True
+
+        # Author citations (e.g., "Mertens T 2015", "Schmidt M 2018")
+        if CITATION_RE.search(text):
             return True
 
         # Months + year (e.g., "Februar 2025")
@@ -1083,8 +1136,18 @@ def create_address_precision_filter(nlp, name):
 
         # Quantity phrases: quantity trigger + number + time unit
         # (e.g., "etwa 2 Wochen", "ab 60 Jahren", "bis 19 Jahre")
-        if any(q in t for q in QUANT_TRIGGERS) and any(u in t for u in TIME_UNITS):
-            return True
+        # FIX (2025-11-18): Check context AFTER span for time units, not just within span
+        # This catches "über 8" when full context is "über 8 bis 10 Wochen"
+        if any(q in t for q in QUANT_TRIGGERS):
+            # Check if time unit is in span text
+            if any(u in t for u in TIME_UNITS):
+                return True
+
+            # Check next 3 tokens after span for time units (context check)
+            if doc and span:
+                for i in range(span.end, min(span.end + 3, len(doc))):
+                    if doc[i].lower_ in TIME_UNITS:
+                        return True  # REJECT: quantity + number + time unit in context
 
         # Age/period phrases (e.g., "Alter von 6", "Jugendliche bis 19", "Personen ab 60")
         # Exclude if it contains a year (e.g., "im Jahr 2013" is okay)
@@ -1127,7 +1190,8 @@ def create_address_precision_filter(nlp, name):
                 continue
 
             # Rule 2: Reject classic non-address contexts (only for non-gazetteer entities)
-            if looks_like_non_address(span_text):
+            # Pass doc and span for context-aware checking (e.g., "über 8" + "Wochen" in context)
+            if looks_like_non_address(span_text, doc, ent):
                 continue
 
             # Rule 3: For non-gazetteer entities, require street suffix as validation
